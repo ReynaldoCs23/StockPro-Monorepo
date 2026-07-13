@@ -1,0 +1,35 @@
+# Dependensi (Ukurannya sangat besar, tidak perlu di-upload)
+/node_modules
+/vendor
+
+# Hasil Build Frontend (React/Vite)
+/public/build
+/public/hot
+
+# File Konfigurasi & Kredensial Rahasia (Wajib Disembunyikan!)
+.env
+.env.backup
+.env.production
+.env.local
+
+# Database Dumps (Mencegah file export HeidiSQL ter-upload)
+*.sql
+*.sqlite
+*.sqlite3
+
+# Storage & Cache Laravel
+/public/storage
+/storage/*.key
+/bootstrap/cache/
+
+# Log Error
+npm-debug.log
+yarn-error.log
+yarn.log
+/storage/logs/
+
+# Konfigurasi Editor & OS (VS Code, dll)
+/.idea
+/.vscode
+.DS_Store
+Thumbs.db

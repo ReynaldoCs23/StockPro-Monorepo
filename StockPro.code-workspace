@@ -1,0 +1,18 @@
+{
+    "folders": [
+        {
+            "path": "frontend",
+            "name": "Frontend (React)"
+        },
+        {
+            "path": "backend",
+            "name": "Backend (Laravel)"
+        }
+    ],
+    "settings": {
+        "files.exclude": {
+            "**/node_modules": true,
+            "**/vendor": true
+        }
+    }
+}

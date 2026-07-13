@@ -1,0 +1,27 @@
+{
+  "public/Images/LogoStockPro.png": {
+    "file": "assets/LogoStockPro-C6_fpp-d.png",
+    "src": "public/Images/LogoStockPro.png"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-BIo_0NJd.css",
+    "name": "app",
+    "names": [
+      "app.css"
+    ],
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/js/app.jsx": {
+    "file": "assets/app-BoWobdJ0.js",
+    "name": "app",
+    "src": "resources/js/app.jsx",
+    "isEntry": true,
+    "css": [
+      "assets/app-BIo_0NJd.css"
+    ],
+    "assets": [
+      "assets/LogoStockPro-C6_fpp-d.png"
+    ]
+  }
+}

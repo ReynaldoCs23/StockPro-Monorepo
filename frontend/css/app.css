@@ -1,0 +1,252 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* --- KEMBALIKAN CUSTOM CSS ANDA --- */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-5px);
+  }
+
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+.loader {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #2563eb;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
+   CONSOLIDATED PRINT STYLES — Strict Portrait Orientation
+   ============================================================ */
+@media print {
+    /* ── PHASE 3: Force A4 Portrait ── */
+    @page {
+        size: A4 portrait !important;
+        margin: 10mm !important;
+    }
+
+    html, body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Reset all layout wrappers to block flow */
+    body, #app, main, .print-wrapper, .print-only-layout, .app-layout {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Destroy all scrollbars and height limits */
+    html, body, #app, main,
+    .faktur-container, .invoice-container,
+    .overflow-y-auto, .overflow-hidden,
+    .h-screen, .min-h-screen {
+        display: block !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        position: static !important;
+    }
+
+    /* Prevent specific elements from breaking across pages */
+    tr, td, th { page-break-inside: avoid; break-inside: avoid; }
+    .signature-section { page-break-inside: avoid; break-inside: avoid; }
+
+    /* Hide unnecessary screen elements */
+    .print\:hidden { display: none !important; }
+
+    /* Let main content fill the page naturally */
+    main {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .print-only-layout {
+        display: block !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white;
+        padding: 20px;
+        z-index: 9999;
+    }
+
+    /* Center the wrapper and restrict to A4 dimensions */
+    .print-safe-wrapper {
+        position: relative;
+        margin: 0 auto !important;
+        width: 190mm !important;
+        max-width: 190mm !important;
+        padding: 0 !important;
+        box-sizing: border-box;
+    }
+
+    /* Reduce Grid/Table spacing specifically for print */
+    .print-safe-wrapper table th,
+    .print-safe-wrapper table td {
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+    }
+
+    /* Table paging behaviour */
+    table {
+        page-break-inside: auto;
+        border-collapse: collapse;
+    }
+    tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+        break-inside: avoid !important;
+    }
+    td, th {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    .print-summary-group {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    .print-signature-block {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-before: avoid;
+    }
+
+    /* Hide everything else when printing */
+    body * {
+        visibility: hidden;
+    }
+
+    .print-safe-wrapper, .print-safe-wrapper * {
+        visibility: visible;
+    }
+
+    /* Phase 4: Professional Table Styling for Print Logs */
+    .print-safe-wrapper .bg-rose-100, .print-safe-wrapper .bg-amber-100, .print-safe-wrapper .bg-emerald-100 {
+        background-color: transparent !important;
+        border: 1px solid #9ca3af !important;
+        color: #111827 !important;
+        font-weight: bold !important;
+    }
+    .print-safe-wrapper .text-rose-700, .print-safe-wrapper .text-amber-700, .print-safe-wrapper .text-emerald-700 {
+        color: #111827 !important;
+    }
+    .print-safe-wrapper td {
+        word-break: break-word !important;
+        white-space: pre-wrap !important;
+    }
+
+    /* --- STYLING UNTUK COMPONENT ReportTemplate.jsx --- */
+    @page {
+        size: A4 landscape; /* Default orientasi cetak */
+        margin: 10mm; /* Margin kertas */
+    }
+
+    /* Pastikan komponen utama mereset visibilitas */
+    .report-container {
+        visibility: visible !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .report-container * {
+        visibility: visible !important;
+    }
+
+    /* Tabel Rules */
+    .report-table {
+        width: 100% !important;
+    }
+
+    /* Cegah baris tabel terpotong di tengah halaman */
+    .print-row {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    /* Paksa warna background untuk header (abut-abu terang) */
+    .report-table thead tr th {
+        background-color: #f1f5f9 !important; /* bg-slate-100 */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Paksa zebra striping di print */
+    .report-table tbody tr:nth-child(even) td {
+        background-color: #f8fafc !important; /* bg-slate-50 */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .report-table tfoot tr {
+        background-color: #f8fafc !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
