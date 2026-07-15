@@ -88,4 +88,44 @@ class BomController extends Controller
             ], 500);
         }
     }
+    // Menghapus resep BOM dengan aman (Soft delete jika memungkinkan, atau DB Transaction)
+    public function destroy($id_bom)
+    {
+        try {
+            DB::beginTransaction();
+
+            $bom = DB::table('boms')->where('id_bom', $id_bom)->first();
+            if (!$bom) {
+                return response()->json(['message' => 'Resep BOM tidak ditemukan!'], 404);
+            }
+
+            // Pengecekan Relasi: Apakah sedang digunakan dalam transaksi Makloon (Pending / In Progress)?
+            $isUsed = DB::table('makloon_orders')
+                ->where('kode_produk', $bom->kode_produk)
+                ->whereIn('status', ['Pending', 'In Progress'])
+                ->exists();
+
+            if ($isUsed) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Resep BOM ini tidak bisa dihapus karena sedang digunakan dalam transaksi Makloon (Pending / In Progress).'
+                ], 400);
+            }
+
+            // Hapus secara aman (detail dihapus dulu baru header)
+            DB::table('bom_details')->where('id_bom', $id_bom)->delete();
+            DB::table('boms')->where('id_bom', $id_bom)->delete();
+
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Resep BOM berhasil dihapus!'], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Maaf, terjadi kesalahan saat menghapus data. Silakan coba lagi.',
+            ], 500);
+        }
+    }
 }

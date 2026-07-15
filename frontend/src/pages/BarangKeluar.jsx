@@ -45,7 +45,7 @@ export default function BarangKeluar() {
     const [targetKodeBarang, setTargetKodeBarang] = useState('');
 
     const filteredOutbound = (() => {
-        return outbound.filter(t => {
+        return (Array.isArray(outbound) ? outbound : []).filter(t => {
             if (!t.tanggal) return true;
             const tgl = getLocalYYYYMMDD(t.tanggal);
             return tgl >= filterStart && tgl <= filterEnd;
@@ -64,7 +64,7 @@ export default function BarangKeluar() {
             apiCall(`/transactions?category=outbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`)
                 .then(data => {
                     if (data && data.data) {
-                        setOutbound(data.data);
+                        setOutbound(Array.isArray(data.data) ? data.data : (data.data.data || []));
                         setLastPage(data.last_page || 1);
                     } else {
                         setOutbound(Array.isArray(data) ? data : []);
@@ -153,7 +153,7 @@ export default function BarangKeluar() {
                     log_detail: `Membatalkan Barang Keluar: ${id}`
                 });
             }
-            setOutbound(outbound.filter(t => t.idTransaksi !== id));
+            setOutbound((Array.isArray(outbound) ? outbound : []).filter(t => t.idTransaksi !== id));
             setToast({ message: "Transaksi berhasil dihapus!", type: "success" });
         } catch (e) { setToast({ message: "Gagal menghapus: " + e.message, type: "error" }); }
     };

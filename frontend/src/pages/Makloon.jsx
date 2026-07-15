@@ -120,6 +120,20 @@ export default function Makloon() {
         }
     };
 
+    const handleDeleteBom = async (id_bom) => {
+        if (!window.confirm("Apakah Anda yakin ingin menghapus resep BOM ini?")) return;
+        
+        try {
+            if (!isApiOffline) {
+                await apiCall(`/boms/${id_bom}`, 'DELETE');
+            }
+            setBoms(prev => (Array.isArray(prev) ? prev : []).filter(item => item.id_bom !== id_bom));
+            setToast({ message: 'Resep BOM berhasil dihapus!', type: 'success' });
+        } catch (err) {
+            setErrorMsg('Gagal menghapus BOM: ' + err.message);
+        }
+    };
+
     // ==========================================
     // LOGIKA BAGIAN 2: MAKLOON ORDERS
     // ==========================================
@@ -265,12 +279,18 @@ export default function Makloon() {
                                     <thead><tr className="bg-slate-50 border-b border-slate-200">
                                         <th className="p-4 font-bold text-slate-600">Kode Produk</th>
                                         <th className="p-4 font-bold text-slate-600">Jumlah Bahan</th>
+                                        <th className="p-4 font-bold text-slate-600 text-right">Aksi</th>
                                     </tr></thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {boms.map(b => (
                                             <tr key={b.id_bom} className="hover:bg-slate-50/50">
                                                 <td className="p-4 font-bold text-slate-700">{b.kode_produk}</td>
                                                 <td className="p-4 text-slate-600">{Array.isArray(b.bahan_baku) ? b.bahan_baku.length : 0} bahan</td>
+                                                <td className="p-4 text-right">
+                                                    <button onClick={() => handleDeleteBom(b.id_bom)} className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors" title="Hapus Resep">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
