@@ -383,6 +383,7 @@ class TransactionController extends Controller {
 
             $this->writeLog($request->log_user, $existing ? 'UPDATE' : 'CREATE', 'transactions', $customLogDetail);
             DB::commit();
+            \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Transaksi"));
 
             $transaction = \App\Models\Transaction::find($payload['idTransaksi']);
@@ -426,6 +427,7 @@ class TransactionController extends Controller {
             $name = $request->inbound['items'][0]['namaBarang'] ?? 'Unknown';
             $this->writeLog($request->log_user, 'CREATE', 'produksi', "Eksekusi Produksi: {$qty} {$name}");
             DB::commit();
+            \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Produksi BOM"));
 
             $transaction = \App\Models\Transaction::find($inbound['idTransaksi']);
@@ -464,6 +466,7 @@ class TransactionController extends Controller {
 
             $this->writeLog($request->log_user, 'UPDATE', 'transactions', $customLogDetail);
             DB::commit();
+            \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Transaksi"));
             return response()->json(['status' => 'success']);
         } catch (\Exception $e) {
@@ -482,6 +485,7 @@ class TransactionController extends Controller {
             $this->revertTransaction($id);
             $this->writeLog($request->log_user, 'DELETE', 'transactions', $request->log_detail ?? "Hapus Transaksi $id");
             DB::commit();
+            \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Transaksi"));
             return response()->json(['status' => 'success']);
         } catch (\Exception $e) {
@@ -563,6 +567,7 @@ class TransactionController extends Controller {
 
             $this->writeLog($request->log_user, 'UPDATE', 'transactions', "Eksekusi manual transaksi terjadwal $id");
             DB::commit();
+            \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Eksekusi Manual Transaksi"));
             return response()->json(['status' => 'success', 'message' => 'Transaksi berhasil dieksekusi.']);
         } catch (\Exception $e) {

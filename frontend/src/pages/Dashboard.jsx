@@ -27,6 +27,7 @@ export default function Dashboard() {
 
     const [startDate, setStartDate] = useState(startDefault);
     const [endDate, setEndDate] = useState(endDefault);
+    const [refreshKey, setRefreshKey] = useState(0);
     const [backendStats, setBackendStats] = useState({
         barangMasuk: { value: 0, percentage: 0, trend: 'up' },
         barangKeluar: { value: 0, percentage: 0, trend: 'up' },
@@ -62,7 +63,19 @@ export default function Dashboard() {
             }
         };
         fetchDashboardData();
-    }, [startDate, endDate]);
+    }, [startDate, endDate, refreshKey]);
+
+    React.useEffect(() => {
+        if (window.Echo) {
+            const channel = window.Echo.channel('inventory-channel');
+            channel.listen('.stok.updated', (e) => {
+                setRefreshKey(prev => prev + 1);
+            });
+            return () => {
+                window.Echo.leaveChannel('inventory-channel');
+            };
+        }
+    }, []);
 
     const stats = useMemo(() => {
         const totalJenis = items.length;

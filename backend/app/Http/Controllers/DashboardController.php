@@ -17,9 +17,9 @@ class DashboardController extends Controller {
         $cleanEnd = \Carbon\Carbon::parse($endFilter)->format('Y-m-d');
 
         $cacheKey = "dashboard_analytics_{$cleanStart}_{$cleanEnd}";
-        $cacheTTL = 60 * 5; // Cache for 5 minutes
 
-        $dashboardData = \Illuminate\Support\Facades\Cache::remember($cacheKey, $cacheTTL, function () use ($cleanStart, $cleanEnd, $startFilter, $endFilter) {
+        // Cache dihapus agar data 100% real-time
+        $dashboardData = call_user_func(function () use ($cleanStart, $cleanEnd, $startFilter, $endFilter) {
             // --- DYNAMIC DASHBOARD ANALYTICS CLOSURES ---
             $durationDays = \Carbon\Carbon::parse($startFilter)->diffInDays(\Carbon\Carbon::parse($endFilter)) + 1;
             $prevStartDate = \Carbon\Carbon::parse($startFilter)->subDays($durationDays)->format('Y-m-d');
@@ -95,14 +95,23 @@ class DashboardController extends Controller {
 
             // 3. Centralized Profit Analytics (Single Source of Truth)
             $profitAnalytics = $this->getProfitAnalyticsBase($cleanStart, $cleanEnd);
-            $estimatedProfit = $profitAnalytics['grand_total_profit'];
+            
+            // Laba = Total Penjualan - Total HPP FIFO
+            $estimatedProfit = $metricPenjualanDistributor['value'] - $profitAnalytics['grand_total_cogs'];
+            $profitAnalytics['grand_total_profit'] = $estimatedProfit; // override internal representation if used
+            $profitAnalytics['grand_total_revenue'] = $metricPenjualanDistributor['value'];
+            
+            // Re-calculate Margin safely to prevent Division by Zero
+            $profitAnalytics['grand_margin_percentage'] = $metricPenjualanDistributor['value'] > 0 
+                ? round(($estimatedProfit / $metricPenjualanDistributor['value']) * 100, 2) 
+                : 0;
 
             // 4. Data Grafik Arus Kas & Laba Harian
             $dailyTotals = DB::table('transactions')
                 ->select(
                     DB::raw('DATE(tanggal) as date'),
-                    DB::raw("SUM(CASE WHEN idTransaksi LIKE 'INV-OUT%' THEN totalTransaksi ELSE 0 END) + SUM(CASE WHEN idTransaksi LIKE 'MKL-OUT%' THEN totalTransaksi ELSE 0 END) - SUM(CASE WHEN idTransaksi LIKE 'RET-IN%' THEN totalTransaksi ELSE 0 END) as net_daily_revenue"),
-                    DB::raw("SUM(CASE WHEN idTransaksi LIKE 'INV-IN%' THEN totalTransaksi ELSE 0 END) + SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%' THEN totalTransaksi ELSE 0 END) - SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%' THEN totalTransaksi ELSE 0 END) as pengeluaran_vendor")
+                    DB::raw("COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-OUT%' THEN totalTransaksi ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-OUT%' THEN totalTransaksi ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%' THEN totalTransaksi ELSE 0 END), 0) as net_daily_revenue"),
+                    DB::raw("COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%' THEN totalTransaksi ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%' THEN totalTransaksi ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%' THEN totalTransaksi ELSE 0 END), 0) as pengeluaran_vendor")
                 )
                 ->whereBetween('tanggal', [$cleanStart, $cleanEnd])
                 ->groupBy('date')
@@ -264,7 +273,11 @@ class DashboardController extends Controller {
                 ->get();
 
             // 10. Additional Metrics (WoW Trends removed, using dynamic metrics)
-            $stokDibooking = DB::table('items')->sum('stok_booking');
+            $stokDibooking = DB::table('transaction_details')
+                ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
+                ->whereIn('transactions.type', ['OUT', 'MAKLOON_OUT'])
+                ->whereIn('transactions.status', ['scheduled', 'pending', 'booked']) // Cover multiple possibilities
+                ->sum('transaction_details.jumlah');
 
             $deadStock = DB::table('items')
                 ->leftJoin(DB::raw('(SELECT transaction_details.kodeBarang FROM transaction_details JOIN transactions ON transaction_details.idTransaksi = transactions.idTransaksi WHERE transactions.type = "OUT" AND transactions.tanggal >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY transaction_details.kodeBarang) as recent_out'), 'items.kodeBarang', '=', 'recent_out.kodeBarang')
@@ -386,11 +399,11 @@ class DashboardController extends Controller {
         $grandMargin = $grandRevenue > 0 ? round(($grandProfit / $grandRevenue) * 100, 2) : 0;
 
         return [
+            'by_category' => $byCategory,
             'grand_total_revenue' => $grandRevenue,
             'grand_total_cogs' => $grandCogs,
             'grand_total_profit' => $grandProfit,
-            'grand_total_margin' => $grandMargin,
-            'by_category' => collect(array_values($byCategory)),
+            'grand_margin_percentage' => $grandMargin
         ];
     }
 }
