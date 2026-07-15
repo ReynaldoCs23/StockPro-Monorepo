@@ -54,6 +54,7 @@ class DashboardController extends Controller {
             $getVendorExpense = function($start, $end) {
                 return (float) DB::table('transactions')
                     ->whereBetween('tanggal', [$start, $end])
+                    ->where('status', 'completed')
                     ->value(DB::raw("
                         COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%' THEN totalTransaksi ELSE 0 END), 0) 
                         +
@@ -66,10 +67,9 @@ class DashboardController extends Controller {
             $getDistributorSales = function($start, $end) {
                 return (float) DB::table('transactions')
                     ->whereBetween('tanggal', [$start, $end])
+                    ->where('status', 'completed')
                     ->value(DB::raw("
                         COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-OUT%' THEN totalTransaksi ELSE 0 END), 0) 
-                        +
-                        COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-OUT%' THEN totalTransaksi ELSE 0 END), 0) 
                         - 
                         COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%' THEN totalTransaksi ELSE 0 END), 0)
                     "));
@@ -368,6 +368,7 @@ class DashboardController extends Controller {
             ->where('transactions.sumber_tujuan', 'NOT LIKE', '%Makloon%')
             ->whereRaw('(item_batches.kodeBarang = transaction_details.kodeBarang OR item_batches.id_batch IS NULL)')
             ->whereBetween('transactions.tanggal', [$startBound, $endBound])
+            ->where('transactions.status', 'completed')
             ->groupBy('kategori')
             ->get();
 
