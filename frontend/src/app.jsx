@@ -12,6 +12,23 @@ import { echo } from './utils/echo';
 // Import Zustand Store
 import useAppStore from './store/useAppStore';
 
+// Komponen Pelindung Rute (Auth Guards)
+const ProtectedRoute = ({ children }) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+        return <Navigate to="/login" replace />;
+    }
+    return children;
+};
+
+const GuestRoute = ({ children }) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+        return <Navigate to="/dashboard" replace />;
+    }
+    return children;
+};
+
 // Import Pages
 import Login from './pages/Login'; 
 import Dashboard from './pages/Dashboard';
@@ -146,11 +163,22 @@ function MainApp() {
         );
     }
 
+    const hasToken = !!localStorage.getItem('auth_token');
+
     if (!currentUser) {
         return (
             <Routes>
-                {/* Note: props simplified for Login, removing unused state props */}
-                <Route path="/login" element={<Login fetchAllData={fetchAllData} />} />
+                {/* Root Route Logic: Jika ada token arahkan ke dashboard, jika tidak ke login */}
+                <Route path="/" element={hasToken ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} />
+                
+                {/* Guest Route Logic: Cegah user yang sudah punya token mengakses halaman login */}
+                <Route path="/login" element={
+                    <GuestRoute>
+                        <Login fetchAllData={fetchAllData} />
+                    </GuestRoute>
+                } />
+                
+                {/* Fallback Guest Route */}
                 <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
         );
@@ -400,29 +428,27 @@ function MainApp() {
                         {/* Render active page using React Router */}
                         <Routes>
                             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                            {/* Dashboard is refactored - No props! */}
-                            <Route path="/dashboard" element={<Dashboard />} />
                             
-                            <Route path="/notifikasi" element={<Notifikasi />} />
-                            <Route path="/semua-aktivitas" element={<SemuaAktivitas />} />
+                            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                            <Route path="/notifikasi" element={<ProtectedRoute><Notifikasi /></ProtectedRoute>} />
+                            <Route path="/semua-aktivitas" element={<ProtectedRoute><SemuaAktivitas /></ProtectedRoute>} />
                             
-                            {/* MasterBarang is refactored - No props! */}
-                            <Route path="/master/barang" element={<MasterBarang />} />
+                            <Route path="/master/barang" element={<ProtectedRoute><MasterBarang /></ProtectedRoute>} />
+                            <Route path="/master/kategori" element={<ProtectedRoute><Kategori /></ProtectedRoute>} />
+                            <Route path="/master/satuan" element={<ProtectedRoute><MasterSatuan /></ProtectedRoute>} />
+                            <Route path="/master/lokasi" element={<ProtectedRoute><Lokasi /></ProtectedRoute>} />
+                            <Route path="/master/supplier" element={<ProtectedRoute><Supplier /></ProtectedRoute>} />
+                            <Route path="/master/pelanggan" element={<ProtectedRoute><Pelanggan /></ProtectedRoute>} />
                             
-                            <Route path="/inventory/masuk" element={<BarangMasuk />} />
-                            <Route path="/inventory/keluar" element={<BarangKeluar />} />
-                            <Route path="/inventory/return" element={<BarangReturn />} />
-                            <Route path="/inventory/makloon" element={<Makloon />} />
-                            <Route path="/calendar" element={<TransactionCalendar />} />
+                            <Route path="/inventory/masuk" element={<ProtectedRoute><BarangMasuk /></ProtectedRoute>} />
+                            <Route path="/inventory/keluar" element={<ProtectedRoute><BarangKeluar /></ProtectedRoute>} />
+                            <Route path="/inventory/return" element={<ProtectedRoute><BarangReturn /></ProtectedRoute>} />
+                            <Route path="/inventory/makloon" element={<ProtectedRoute><Makloon /></ProtectedRoute>} />
+                            <Route path="/calendar" element={<ProtectedRoute><TransactionCalendar /></ProtectedRoute>} />
                             
-                            <Route path="/master/kategori" element={<Kategori />} />
-                            <Route path="/master/satuan" element={<MasterSatuan />} />
-                            <Route path="/master/lokasi" element={<Lokasi />} />
-                            <Route path="/master/supplier" element={<Supplier />} />
-                            <Route path="/master/pelanggan" element={<Pelanggan />} />
+                            {isAdminOrSuperadmin && <Route path="/master/user" element={<ProtectedRoute><User /></ProtectedRoute>} />}
+                            {isAdminOrSuperadmin && <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />}
                             
-                            {isAdminOrSuperadmin && <Route path="/master/user" element={<User />} />}
-                            {isAdminOrSuperadmin && <Route path="/logs" element={<Logs />} />}
                             <Route path="*" element={<Navigate to="/dashboard" replace />} />
                         </Routes>
                     </div>
