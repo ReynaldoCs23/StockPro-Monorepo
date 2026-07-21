@@ -120,14 +120,9 @@ class DashboardController extends Controller {
 
             $dailyAnalytics = DB::table('transaction_details')
                 ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
-                ->leftJoin('item_batches', function($join) {
-                    $join->on('item_batches.kodeBarang', '=', 'transaction_details.kodeBarang');
-                })
-                ->leftJoin('transaction_batch_details', function($join) {
-                    $join->on('transaction_batch_details.idTransaksi', '=', 'transactions.idTransaksi')
-                         ->on('transaction_batch_details.id_batch', '=', 'item_batches.id_batch');
-                })
                 ->leftJoin('items', 'transaction_details.kodeBarang', '=', 'items.kodeBarang')
+                ->leftJoin('transaction_batch_details', 'transactions.idTransaksi', '=', 'transaction_batch_details.idTransaksi')
+                ->leftJoin('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
                 ->select(
                     DB::raw('DATE(transactions.tanggal) as date'),
                     DB::raw("
@@ -135,8 +130,21 @@ class DashboardController extends Controller {
                             CASE 
                                 WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
                                     ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
+                                ELSE 0 
+                            END
+                        ) - SUM(
+                            CASE 
                                 WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                    -ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
+                                    ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah)) * 
+                                    COALESCE(
+                                        (SELECT SUM(COALESCE(tbd.qty_diambil, td.jumlah) * COALESCE(ib.harga_modal_satuan, i.hargaBeli)) / NULLIF(SUM(COALESCE(tbd.qty_diambil, td.jumlah)), 0)
+                                         FROM transaction_details td 
+                                         LEFT JOIN items i ON td.kodeBarang = i.kodeBarang 
+                                         LEFT JOIN transaction_batch_details tbd ON td.idTransaksi = tbd.idTransaksi 
+                                         LEFT JOIN item_batches ib ON tbd.id_batch = ib.id_batch 
+                                         WHERE td.idTransaksi = transactions.idReferensi AND td.kodeBarang = transaction_details.kodeBarang),
+                                        items.hargaBeli
+                                    )
                                 ELSE 0 
                             END
                         ) as net_daily_cogs
@@ -353,11 +361,25 @@ class DashboardController extends Controller {
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
                                 ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
-                            WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                -ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
                             ELSE 0 
                         END
-                    ) as net_cogs
+                    ) as cogs_out,
+                    SUM(
+                        CASE 
+                            WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
+                                ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah)) * 
+                                COALESCE(
+                                    (SELECT SUM(COALESCE(tbd.qty_diambil, td.jumlah) * COALESCE(ib.harga_modal_satuan, i.hargaBeli)) / NULLIF(SUM(COALESCE(tbd.qty_diambil, td.jumlah)), 0)
+                                     FROM transaction_details td 
+                                     LEFT JOIN items i ON td.kodeBarang = i.kodeBarang 
+                                     LEFT JOIN transaction_batch_details tbd ON td.idTransaksi = tbd.idTransaksi 
+                                     LEFT JOIN item_batches ib ON tbd.id_batch = ib.id_batch 
+                                     WHERE td.idTransaksi = transactions.idReferensi AND td.kodeBarang = transaction_details.kodeBarang),
+                                    items.hargaBeli
+                                )
+                            ELSE 0 
+                        END
+                    ) as cogs_ret
                 ")
             )
             ->whereIn('transactions.type', ['OUT', 'RET'])
@@ -378,9 +400,11 @@ class DashboardController extends Controller {
 
         foreach ($analytics as $row) {
             $cat = $row->kategori;
-            // Calculate Net Revenue
+            // Net Sales (Penjualan Bersih): Gross Sales - Total Retur Customer
             $netRevenue = (float)$row->revenue_out - (float)$row->revenue_ret;
-            $netCogs = (float)$row->net_cogs; // Already handled deductions in SQL
+            // Net HPP (HPP Bersih): Gross HPP DIKURANGI Total HPP retur
+            $netCogs = (float)$row->cogs_out - (float)$row->cogs_ret;
+            // Net Profit
             $profit = $netRevenue - $netCogs;
 
             $byCategory[] = [
@@ -394,9 +418,10 @@ class DashboardController extends Controller {
             $grandCogs += $netCogs;
         }
 
+        // Net Profit (Laba Bersih): Net Sales - Net HPP
         $grandProfit = round($grandRevenue - $grandCogs, 2);
         
-        // Phase 3: Division by Zero Prevention for Margin
+        // Margin: (Net Profit / Net Sales) * 100
         $grandMargin = $grandRevenue > 0 ? round(($grandProfit / $grandRevenue) * 100, 2) : 0;
 
         return [
