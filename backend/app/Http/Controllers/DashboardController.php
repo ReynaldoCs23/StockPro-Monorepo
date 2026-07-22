@@ -226,6 +226,7 @@ class DashboardController extends Controller {
                       ->orWhere('transactions.sumber_tujuan', 'LIKE', '%RET_IN_RETURN_CUSTOMER%');
                 })
                 ->where('transactions.sumber_tujuan', 'NOT LIKE', '%Makloon%')
+                ->where('transactions.status', 'completed')
                 ->whereBetween('transactions.tanggal', [$cleanStart, $cleanEnd])
                 ->whereNotNull('transactions.entitas')
                 ->groupBy('transactions.entitas', 'customers.penanggung_jawab')

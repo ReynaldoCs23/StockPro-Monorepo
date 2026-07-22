@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 
 export default function DataTable({ 
     title, data, columns, onAdd, onEdit, onDelete, onPrint, idKey, filename, customFilter, hideActions,
-    currentPage, lastPage, onPageChange
+    currentPage, lastPage, onPageChange, extraActions
 }) {
     const [search, setSearch] = useState('');
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -87,7 +87,7 @@ export default function DataTable({
                     <thead className="bg-slate-50 text-slate-700 border-b">
                         <tr>
                             {columns.map((col, idx) => <th key={idx} className="px-5 py-4 whitespace-nowrap font-semibold">{col.label}</th>)}
-                            {(onEdit || onDelete || onPrint) && <th className="px-5 py-4 whitespace-nowrap font-semibold text-center print:hidden">Aksi</th>}
+                            {(onEdit || onDelete || onPrint || extraActions) && <th className="px-5 py-4 whitespace-nowrap font-semibold text-center print:hidden">Aksi</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 print:divide-none">
@@ -96,9 +96,10 @@ export default function DataTable({
                             return (
                                 <tr key={idx} className="hover:bg-slate-50">
                                     {columns.map((col, cIdx) => <td key={cIdx} className="px-5 py-4">{col.format ? col.format(row[col.key], row) : row[col.key]}</td>)}
-                                    {(onEdit || onDelete || onPrint) && (
+                                    {(onEdit || onDelete || onPrint || extraActions) && (
                                         <td className="px-5 py-4 whitespace-nowrap text-center print:hidden">
                                             <div className="flex items-center justify-center gap-2">
+                                                {extraActions && extraActions(row)}
                                                 {onPrint && <button onClick={() => onPrint(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Print Surat Jalan/Struk"><FileText className="w-4 h-4" /></button>}
                                                 {(() => {
                                                     if (isProtected) return null;
@@ -129,7 +130,7 @@ export default function DataTable({
                                     )}
                                 </tr>
                             );
-                        }) : <tr><td colSpan={columns.length + (onEdit || onDelete || onPrint ? 1 : 0)} className="px-5 py-12 text-center text-slate-400">Tidak ada data.</td></tr>}
+                        }) : <tr><td colSpan={columns.length + (onEdit || onDelete || onPrint || extraActions ? 1 : 0)} className="px-5 py-12 text-center text-slate-400">Tidak ada data.</td></tr>}
                     </tbody>
                 </table>
             </div>

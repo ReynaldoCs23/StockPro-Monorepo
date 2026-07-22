@@ -6,6 +6,7 @@ import StatCardMini from '../components/ui/StatCardMini';
 import DataTable from '../components/ui/DataTable';
 import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
+import ConfirmModal from '../components/ui/ConfirmModal';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import { apiCall } from '../utils/api';
 import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate } from '../utils/helpers';
@@ -24,6 +25,7 @@ export default function BarangKeluar() {
     const [editId, setEditId] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
+    const [confirmAction, setConfirmAction] = useState(null);
 
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
     const [filterStart, setFilterStart] = useState(startDefault);
@@ -51,6 +53,8 @@ export default function BarangKeluar() {
             return tgl >= filterStart && tgl <= filterEnd;
         });
     })();
+
+    const completedOutbound = filteredOutbound.filter(t => t.status === 'completed' || t.status === 'COMPLETED');
 
     useEffect(() => {
         setCurrentPage(1);
@@ -251,8 +255,37 @@ export default function BarangKeluar() {
         finally { setIsProcessing(false); }
     };
 
+    const executeApprove = async (row) => {
+        setIsProcessing(true);
+        try {
+            await apiCall(`/transaction/${row.idTransaksi}/approve`, 'POST');
+            setToast({ message: 'Transaksi berhasil di-approve!', type: 'success' });
+            setTimeout(() => window.location.reload(), 1500);
+        } catch(e) { setToast({ message: e.message, type: 'error' }); }
+        finally { setIsProcessing(false); }
+    };
+
+    const executeVoid = async (row) => {
+        setIsProcessing(true);
+        try {
+            await apiCall(`/transaction/${row.idTransaksi}/void`, 'POST');
+            setToast({ message: 'Transaksi berhasil dibatalkan!', type: 'success' });
+            setTimeout(() => window.location.reload(), 1500);
+        } catch(e) { setToast({ message: e.message, type: 'error' }); }
+        finally { setIsProcessing(false); }
+    };
+
+    const handleApprove = (row) => setConfirmAction({ type: 'approve', row });
+    const handleVoid = (row) => setConfirmAction({ type: 'void', row });
+
     const reportColumns = [
         { key: 'idTransaksi', label: 'ID Transaksi' },
+        { key: 'status', label: 'Status', format: (v) => {
+            if (v === 'draft') return <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">DRAFT</span>;
+            if (v === 'void') return <span className="px-2 py-1 bg-rose-100 text-rose-800 rounded-md text-[10px] font-bold">VOID</span>;
+            if (v === 'scheduled') return <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-[10px] font-bold">SCHEDULED</span>;
+            return <span className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">COMPLETED</span>;
+        } },
         { key: 'tanggal', label: 'Tanggal', format: v => formatLocalDate(v) },
         { key: 'entitas', label: 'Pelanggan/Penerima', format: (v, row) => v || row.namaPembeli || row.sumber_tujuan || row.jenisReturn || '-' },
         { key: 'isi_transaksi', label: 'Isi Transaksi', format: (v, row) => (
@@ -285,8 +318,8 @@ export default function BarangKeluar() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                    <StatCardMini title="Total Transaksi Keluar" value={filteredOutbound.length} icon={ArrowUpFromLine} bgClass="bg-rose-50" colorClass="text-rose-600" />
-                    <StatCardMini title="Total Qty Keluar" value={filteredOutbound.reduce((a, b) => a + Number(b.jumlah || 0), 0)} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
+                    <StatCardMini title="Total Transaksi Keluar" value={completedOutbound.length} icon={ArrowUpFromLine} bgClass="bg-rose-50" colorClass="text-rose-600" />
+                    <StatCardMini title="Total Qty Keluar" value={completedOutbound.reduce((a, b) => a + Number(b.jumlah || 0), 0)} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
                 </div>
 
                 <DataTable
@@ -312,10 +345,31 @@ export default function BarangKeluar() {
                     lastPage={lastPage}
                     onPageChange={setCurrentPage}
                     columns={reportColumns}
+                    extraActions={(row) => (
+                        <>
+                            {row.status === 'draft' && <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>}
+                            {row.status === 'completed' && <button onClick={() => handleVoid(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Void Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>}
+                        </>
+                    )}
                 />
             </div>
             
             {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Keluar" type="transaction" data={filteredOutbound} columns={reportColumns} />}
+
+            <ConfirmModal
+                isOpen={!!confirmAction}
+                onClose={() => setConfirmAction(null)}
+                onConfirm={() => {
+                    if (confirmAction?.type === 'approve') {
+                        executeApprove(confirmAction.row);
+                    } else if (confirmAction?.type === 'void') {
+                        executeVoid(confirmAction.row);
+                    }
+                    setConfirmAction(null);
+                }}
+                title={confirmAction?.type === 'approve' ? "Approve Transaksi" : "Batalkan Transaksi (Void)"}
+                message={confirmAction?.type === 'approve' ? "Approve transaksi ini? Stok fisik akan terpotong secara FIFO." : "Batalkan (Void) transaksi ini? Alokasi FIFO akan dikembalikan."}
+            />
 
             <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setErrorMsg(''); }} title="Input Barang Keluar" width="max-w-4xl">
                 <form onSubmit={handleSubmit} className="space-y-4">

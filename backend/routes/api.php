@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MakloonController;
 use App\Http\Controllers\SatuanController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\StockAdjustmentController;
 
 // ==========================================
 // AUTH (Public)
@@ -34,6 +35,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/company-profile', [\App\Http\Controllers\CompanyProfileController::class, 'show']);
     Route::post('/company-profile', [\App\Http\Controllers\CompanyProfileController::class, 'update']);
     Route::get('/transactions', [TransactionController::class, 'index']);
+    
+    // ==========================================
+    // 1.6 STOCK ADJUSTMENTS
+    // ==========================================
+    Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index']);
+    Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store']);
 
     // ==========================================
     // 2. API BOM
@@ -95,6 +102,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/transaction/{type}', [TransactionController::class, 'store']);
         Route::put('/transaction/{type}/{id}', [TransactionController::class, 'updateTransaction']); 
         Route::post('/transaction/{id}/execute', [TransactionController::class, 'executeScheduledTransaction']);
+        Route::post('/transaction/{id}/approve', [TransactionController::class, 'approveTransaction']);
+        Route::post('/transaction/{id}/void', [TransactionController::class, 'voidTransaction']);
         Route::delete('/transaction/{type}/{id}', [TransactionController::class, 'destroy']);
     });
 });

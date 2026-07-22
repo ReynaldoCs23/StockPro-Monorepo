@@ -47,6 +47,7 @@ import Logs from './pages/Logs';
 import Notifikasi from './pages/Notifikasi';
 import SemuaAktivitas from './pages/SemuaAktivitas';
 import TransactionCalendar from './pages/TransactionCalendar';
+import StockAdjustment from './pages/StockAdjustment';
 
 function MainApp() {
     const todayString = getLocalYYYYMMDD();
@@ -194,6 +195,7 @@ function MainApp() {
                 { id: 'masuk', path: '/inventory/masuk', label: 'Barang Masuk', icon: ArrowDownToLine, permission: 'view_barang_masuk' },
                 { id: 'keluar', path: '/inventory/keluar', label: 'Barang Keluar', icon: ArrowUpFromLine, permission: 'view_barang_keluar' },
                 { id: 'return', path: '/inventory/return', label: 'Barang Return', icon: Undo, permission: 'view_barang_return' },
+                { id: 'adjustment', path: '/inventory/adjustment', label: 'Penyesuaian Stok', icon: ClipboardList, permission: 'view_barang_masuk' },
                 { id: 'makloon', path: '/inventory/makloon', label: 'Makloon', icon: Factory, permission: 'view_makloon' },
             ]
         },
@@ -443,6 +445,7 @@ function MainApp() {
                             <Route path="/inventory/masuk" element={<ProtectedRoute><BarangMasuk /></ProtectedRoute>} />
                             <Route path="/inventory/keluar" element={<ProtectedRoute><BarangKeluar /></ProtectedRoute>} />
                             <Route path="/inventory/return" element={<ProtectedRoute><BarangReturn /></ProtectedRoute>} />
+                            <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
                             <Route path="/inventory/makloon" element={<ProtectedRoute><Makloon /></ProtectedRoute>} />
                             <Route path="/calendar" element={<ProtectedRoute><TransactionCalendar /></ProtectedRoute>} />
                             

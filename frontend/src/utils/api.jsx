@@ -26,11 +26,21 @@ export const apiCall = async (endpoint, method = 'GET', body = null) => {
                 return { isGuest: true, status: 401 };
             }
 
+            const contentType = res.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error(`Terjadi kesalahan pada server (${res.status}): Respons bukan JSON.`);
+            }
+
             // Coba ambil pesan error dari Laravel jika ada
             const errData = await res.json().catch(() => ({ message: `HTTP Error ${res.status}` }));
             const error = new Error(errData.message || 'Terjadi kerusakan fatal di server Laravel.');
             error.status = res.status;
             throw error;
+        }
+
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error(`Terjadi kesalahan pada server (${res.status}): Respons bukan JSON.`);
         }
 
         const data = await res.json();

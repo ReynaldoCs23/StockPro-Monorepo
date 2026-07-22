@@ -34,6 +34,7 @@ function PermissionGrid({ allPermissions, userPermissions, setUserPermissions })
         barang_masuk: 'Barang Masuk',
         barang_keluar: 'Barang Keluar',
         barang_return: 'Barang Return',
+        penyesuaian_stok: 'Penyesuaian Stok',
         makloon: 'Makloon',
         master_barang: 'Master Barang',
         kategori: 'Kategori',
@@ -124,6 +125,7 @@ export default function User() {
         barang_masuk: ['view', 'create', 'edit', 'delete'],
         barang_keluar: ['view', 'create', 'edit', 'delete'],
         barang_return: ['view', 'create', 'edit', 'delete'],
+        penyesuaian_stok: ['view', 'create', 'edit', 'delete'],
         makloon: ['view', 'create', 'edit', 'delete'],
         master_barang: ['view', 'create', 'edit', 'delete'],
         kategori: ['view', 'create', 'edit', 'delete'],
@@ -361,9 +363,26 @@ export default function User() {
                                 <h4 className="text-sm font-bold text-slate-800">Custom Permissions Override</h4>
                                 <p className="text-xs text-slate-500 mt-0.5">Atur hak akses spesifik untuk user ini. Klik nama modul untuk toggle semua.</p>
                             </div>
-                            <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-1 rounded-lg">
-                                {userPermissions.length} aktif
-                            </span>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const guestPerms = [];
+                                        Object.keys(effectivePermissions).forEach(module => {
+                                            if (effectivePermissions[module]?.includes('view')) {
+                                                guestPerms.push(`view_${module}`);
+                                            }
+                                        });
+                                        setUserPermissions(guestPerms);
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors border border-slate-200"
+                                >
+                                    Set as Guest (Read-Only)
+                                </button>
+                                <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-1 rounded-lg">
+                                    {userPermissions.length} aktif
+                                </span>
+                            </div>
                         </div>
 
                         {loadingPerms ? (

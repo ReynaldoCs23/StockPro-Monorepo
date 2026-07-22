@@ -4,6 +4,7 @@ import StatCardMini from '../components/ui/StatCardMini';
 import DataTable from '../components/ui/DataTable';
 import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
+import ConfirmModal from '../components/ui/ConfirmModal';
 import FakturPajak from '../components/ui/FakturPajak';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import { apiCall } from '../utils/api';
@@ -35,6 +36,7 @@ export default function BarangMasuk() {
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
     const [detailData, setDetailData] = useState(null);
     const [toast, setToast] = useState(null);
+    const [confirmAction, setConfirmAction] = useState(null);
 
     // Header Data
     const [formData, setFormData] = useState({ tanggal: todayString, sumber: 'Dari Supplier', namaSupplier: '', keterangan: '' });
@@ -87,7 +89,8 @@ export default function BarangMasuk() {
         });
     })();
 
-    const totalQtyMasuk = filteredInbound.reduce((a, b) => a + Number(b.jumlah || 0), 0);
+    const completedInbound = filteredInbound.filter(t => t.status === 'completed' || t.status === 'COMPLETED');
+    const totalQtyMasuk = completedInbound.reduce((a, b) => a + Number(b.jumlah || 0), 0);
 
     const openAddModal = () => {
         setEditId(null);
@@ -250,8 +253,25 @@ export default function BarangMasuk() {
         finally { setIsProcessing(false); }
     };
 
+    const executeApprove = async (row) => {
+        setIsProcessing(true);
+        try {
+            await apiCall(`/transaction/${row.idTransaksi}/approve`, 'POST');
+            setToast({ message: 'Transaksi berhasil di-approve!', type: 'success' });
+            setTimeout(() => window.location.reload(), 1500);
+        } catch(e) { setToast({ message: e.message, type: 'error' }); }
+        finally { setIsProcessing(false); }
+    };
+
+    const handleApprove = (row) => setConfirmAction({ type: 'approve', row });
+
     const reportColumns = [
         { key: 'idTransaksi', label: 'ID Transaksi' },
+        { key: 'status', label: 'Status', format: (v) => {
+            if (v === 'draft') return <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">DRAFT</span>;
+            if (v === 'scheduled') return <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-[10px] font-bold">SCHEDULED</span>;
+            return <span className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">COMPLETED</span>;
+        } },
         { key: 'tanggal', label: 'Tanggal', format: v => formatLocalDate(v) },
         { key: 'sumber', label: 'Sumber' },
         { key: 'namaSupplier', label: 'Nama Supplier', format: (v, row) => v || row.entitas || '-' },
@@ -284,7 +304,7 @@ export default function BarangMasuk() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                    <StatCardMini title="Total Transaksi Masuk" value={filteredInbound.length} icon={ArrowDownToLine} bgClass="bg-emerald-50" colorClass="text-emerald-600" />
+                    <StatCardMini title="Total Transaksi Masuk" value={completedInbound.length} icon={ArrowDownToLine} bgClass="bg-emerald-50" colorClass="text-emerald-600" />
                     <StatCardMini title="Total Qty Masuk" value={totalQtyMasuk} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
                 </div>
 
@@ -301,19 +321,35 @@ export default function BarangMasuk() {
                             </div>
                         </div>
                     }
+                    columns={reportColumns}
+                    currentPage={currentPage} lastPage={lastPage} onPageChange={setCurrentPage}
+                    extraActions={(row) => (
+                        <>
+                            {row.status === 'draft' && <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>}
+                        </>
+                    )}
                     onAdd={can('create_barang_masuk') ? openAddModal : null}
                     onEdit={can('edit_barang_masuk') ? handleEdit : null}
                     onDelete={can('delete_barang_masuk') ? handleDelete : null}
                     hideActions={row => (row.type && row.type.includes('MAKLOON')) || (row.idTransaksi && row.idTransaksi.startsWith('RET'))}
                     onPrint={handlePrintRow}
-                    currentPage={currentPage}
-                    lastPage={lastPage}
-                    onPageChange={setCurrentPage}
-                    columns={reportColumns}
                 />
             </div>
             
             {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Masuk" type="transaction" data={filteredInbound} columns={reportColumns} />}
+
+            <ConfirmModal
+                isOpen={!!confirmAction}
+                onClose={() => setConfirmAction(null)}
+                onConfirm={() => {
+                    if (confirmAction?.type === 'approve') {
+                        executeApprove(confirmAction.row);
+                    }
+                    setConfirmAction(null);
+                }}
+                title="Approve Transaksi"
+                message="Approve transaksi ini? Stok fisik dan HPP akan terupdate secara permanen."
+            />
 
             <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title="Input Kedatangan Barang" width="max-w-4xl">
                 <form onSubmit={handleSubmit} className="space-y-4">
