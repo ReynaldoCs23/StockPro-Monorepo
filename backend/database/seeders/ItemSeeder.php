@@ -21,7 +21,7 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 9910,
-                'hargaJual' => 10909
+                'hargaJual' => 40000
             ],
             [
                 'kodeBarang' => 'BRG-0002',
@@ -88,6 +88,19 @@ class ItemSeeder extends Seeder
                 'hargaBeli' => 910,
                 'hargaJual' => 0
             ],
+                        [
+                'kodeBarang' => 'RM-0004',
+                'nama' => 'Galon Kosong 19L',
+                'kategori' => 'Bahan Baku dan Kemasan',
+                'tipeBarang' => 'BAHAN BAKU',
+                'satuan_dasar' => 'Pcs',
+                'satuan_besar' => null,
+                'rasio_konversi' => 1,
+                'stok' => 0,
+                'minStok' => 0,
+                'hargaBeli' => 20000,
+                'hargaJual' => 0
+            ], 
         ];
 
         foreach ($items as $item) {

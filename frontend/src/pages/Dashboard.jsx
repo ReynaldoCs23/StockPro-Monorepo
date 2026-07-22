@@ -302,7 +302,7 @@ export default function Dashboard() {
                         <div className="flex items-center gap-3 mt-1">
                             <h3 className="text-[28px] font-extrabold text-white leading-none">{formatRp(backendStats.labaBersih)}</h3>
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-white/20 text-white shadow-sm border border-white/30 tracking-wide">
-                                Margin: {(backendStats.penjualanDistributor?.value || 0) > 0 ? ((backendStats.labaBersih / backendStats.penjualanDistributor.value) * 100).toFixed(1) : 0}%
+                                Margin: {(backendStats.totalRevenue || 0) > 0 ? ((backendStats.labaBersih / backendStats.totalRevenue) * 100).toFixed(1) : 0}%
                             </span>
                         </div>
                     </div>

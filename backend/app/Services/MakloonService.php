@@ -129,7 +129,7 @@ class MakloonService
         $pajakNominal = $financial['pajak_nominal'] ?? 0;
         $totalTransaksi = $financial['total_transaksi'] ?? 0;
 
-        return DB::transaction(function () use ($order, $receivedQty, $hargaSatuan, $pajakPersen, $pajakNominal, $totalTransaksi) {
+        return DB::transaction(function () use ($order, $receivedQty, $hargaSatuan, $pajakPersen, $pajakNominal, $totalTransaksi, $financial) {
             $bom = Bom::where('kode_produk', $order->kode_produk)->with('details')->first();
             if (!$bom) {
                 throw new \Exception("Resep BOM tidak ditemukan untuk produk ini.");
@@ -152,7 +152,28 @@ class MakloonService
             $fgItem->stok += $receivedQty;
             $fgItem->save();
 
-            // 2. Create MAKLOON_IN transaction — with idReferensi and target_kode_barang
+            // ==========================================
+            // TAHAP 1: Tarik Nilai Modal Asli (FIFO Tracking)
+            // ==========================================
+            $totalBomCost = 0;
+            if ($idReferensi) {
+                $fifoCost = DB::table('transaction_batch_details')
+                    ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+                    ->where('transaction_batch_details.idTransaksi', $idReferensi)
+                    ->sum(DB::raw('transaction_batch_details.qty_diambil * item_batches.harga_modal_satuan'));
+                $totalBomCost = (float) $fifoCost;
+            }
+
+            // ==========================================
+            // TAHAP 2: Kalkulasi Final Unit Cost (HPP Barang Jadi)
+            // ==========================================
+            $bomCostPerUnit = $receivedQty > 0 ? $totalBomCost / $receivedQty : 0;
+            // PPN dilarang keras masuk ke komponen pembentuk HPP Barang Jadi
+            $newHargaAcuan = round($bomCostPerUnit + $hargaSatuan, 2);
+
+            // ==========================================
+            // 2. Create MAKLOON_IN transaction
+            // ==========================================
             $trxInId = $this->idGenerator->generateTransactionId('MAKLOON_IN');
             $transactionIn = Transaction::create([
                 'idTransaksi' => $trxInId,
@@ -168,7 +189,10 @@ class MakloonService
                 'totalTransaksi' => $totalTransaksi
             ]);
 
-            // Finished Goods detail — absolute location enforcement
+            // ==========================================
+            // TAHAP 3: Terapkan HPP Final ke Insert Stok Masuk
+            // ==========================================
+            // Finished Goods detail
             TransactionDetail::create([
                 'idTransaksi' => $trxInId,
                 'kodeBarang' => $fgItem->kodeBarang,
@@ -176,7 +200,7 @@ class MakloonService
                 'jumlah' => $receivedQty,
                 'satuan_transaksi' => $fgItem->satuan_dasar ?? 'Pcs',
                 'jumlah_transaksi' => $receivedQty,
-                'harga_satuan' => $hargaSatuan,
+                'harga_satuan' => $newHargaAcuan, // <--- HPP Final (Bahan Baku + Jasa)
                 'lokasi_asal' => $vendorName,
                 'lokasi_tujuan' => $financial['lokasi_tujuan'] ?? $companyName
             ]);
@@ -189,24 +213,14 @@ class MakloonService
                 'tanggal_masuk' => Carbon::now()->toDateString(),
                 'qty_awal' => $receivedQty,
                 'qty_sisa' => $receivedQty,
-                'harga_modal_satuan' => $hargaSatuan,
+                'harga_modal_satuan' => $newHargaAcuan, // <--- HPP Final (Bahan Baku + Jasa)
                 'idLokasi' => $financial['lokasi_tujuan'] ?? null,
                 'lokasi_rak' => $companyName,
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now()
             ]);
 
-            // Recalculate Harga Acuan (Base Cost) for finished goods
-            $totalBomCost = 0;
-            foreach ($bom->details as $detail) {
-                $rawItem = Item::find($detail->kode_bahan_baku);
-                if ($rawItem) {
-                    $totalBomCost += $rawItem->hargaBeli * ($detail->jumlah_per_unit * $receivedQty);
-                }
-            }
-            $bomCostPerUnit = $receivedQty > 0 ? $totalBomCost / $receivedQty : 0;
-            $taxPerUnit = $receivedQty > 0 ? $pajakNominal / $receivedQty : 0;
-            $newHargaAcuan = round($bomCostPerUnit + $hargaSatuan + $taxPerUnit, 2);
+            // Update master item unit cost
             $fgItem->hargaBeli = $newHargaAcuan;
             $fgItem->save();
 
