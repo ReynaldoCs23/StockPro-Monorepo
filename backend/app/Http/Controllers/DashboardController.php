@@ -122,20 +122,32 @@ class DashboardController extends Controller {
                 ->get()
                 ->keyBy('date');
 
+            $batchAggQuery = DB::table('transaction_batch_details')
+                ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+                ->select(
+                    'transaction_batch_details.idTransaksi',
+                    'item_batches.kodeBarang',
+                    DB::raw('SUM(transaction_batch_details.qty_diambil) as total_qty_diambil'),
+                    DB::raw('SUM(transaction_batch_details.qty_diambil * item_batches.harga_modal_satuan) as total_cogs_batch')
+                )
+                ->groupBy('transaction_batch_details.idTransaksi', 'item_batches.kodeBarang');
+
             $dailyAnalytics = DB::table('transaction_details')
                 ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
                 ->leftJoin('items', 'transaction_details.kodeBarang', '=', 'items.kodeBarang')
-                ->leftJoin('transaction_batch_details', 'transactions.idTransaksi', '=', 'transaction_batch_details.idTransaksi')
-                ->leftJoin('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+                ->leftJoinSub($batchAggQuery, 'batch_agg', function ($join) {
+                    $join->on('transaction_details.idTransaksi', '=', 'batch_agg.idTransaksi')
+                         ->on('transaction_details.kodeBarang', '=', 'batch_agg.kodeBarang');
+                })
                 ->select(
                     DB::raw('DATE(transactions.tanggal) as date'),
                     DB::raw("
                         SUM(
                             CASE 
                                 WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
-                                    ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * transaction_details.harga_satuan)
+                                    ABS(transaction_details.jumlah * transaction_details.harga_satuan)
                                 WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                    -ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * transaction_details.harga_satuan)
+                                    -ABS(transaction_details.jumlah * transaction_details.harga_satuan)
                                 ELSE 0 
                             END
                         ) as net_daily_base_revenue
@@ -144,9 +156,9 @@ class DashboardController extends Controller {
                         SUM(
                             CASE 
                                 WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
-                                    ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
+                                    ABS(COALESCE(batch_agg.total_cogs_batch, transaction_details.jumlah * items.hargaBeli, 0))
                                 WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                    -ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
+                                    -ABS(COALESCE(batch_agg.total_cogs_batch, transaction_details.jumlah * items.hargaBeli, 0))
                                 ELSE 0 
                             END
                         ) as net_daily_cogs
@@ -154,7 +166,6 @@ class DashboardController extends Controller {
                 )
                 ->where('transactions.status', 'completed')
                 ->whereBetween('transactions.tanggal', [$cleanStart, $cleanEnd])
-                ->whereRaw('(item_batches.kodeBarang = transaction_details.kodeBarang OR item_batches.id_batch IS NULL)')
                 ->groupBy('date')
                 ->get()
                 ->keyBy('date');
@@ -314,6 +325,7 @@ class DashboardController extends Controller {
                 'totalRevenue' => $profitAnalytics['grand_total_revenue'],
                 'totalCogs' => $profitAnalytics['grand_total_cogs'],
                 'totalProfit' => $profitAnalytics['grand_total_profit'],
+                'grand_margin_percentage' => $profitAnalytics['grand_margin_percentage'],
                 'chartData' => $chartData,
                 'categoryProfitArray' => $categoryProfitData->toArray(),
                 'maxProfit' => (float)$maxProfit,
@@ -341,43 +353,53 @@ class DashboardController extends Controller {
      */
     private function getProfitAnalyticsBase($startBound, $endBound)
     {
+        $batchAggQuery = DB::table('transaction_batch_details')
+            ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+            ->select(
+                'transaction_batch_details.idTransaksi',
+                'item_batches.kodeBarang',
+                DB::raw('SUM(transaction_batch_details.qty_diambil) as total_qty_diambil'),
+                DB::raw('SUM(transaction_batch_details.qty_diambil * item_batches.harga_modal_satuan) as total_cogs_batch')
+            )
+            ->groupBy('transaction_batch_details.idTransaksi', 'item_batches.kodeBarang');
+
         // Calculate Net Revenue and Net COGS per category directly in SQL
         $analytics = DB::table('transaction_details')
             ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
             ->leftJoin('items', 'transaction_details.kodeBarang', '=', 'items.kodeBarang')
-            ->leftJoin('transaction_batch_details', 'transactions.idTransaksi', '=', 'transaction_batch_details.idTransaksi')
-            ->leftJoin('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+            ->leftJoinSub($batchAggQuery, 'batch_agg', function ($join) {
+                $join->on('transaction_details.idTransaksi', '=', 'batch_agg.idTransaksi')
+                     ->on('transaction_details.kodeBarang', '=', 'batch_agg.kodeBarang');
+            })
             ->select(
                 DB::raw('COALESCE(NULLIF(items.nama, ""), "Unknown Product") as kategori'),
                 // Net Revenue = SUM(OUT Revenue) - SUM(RET Revenue)
-                // Note: We use qty_diambil / jumlah fallback carefully to avoid duplicate row inflation if multiple batches exist. 
-                // Since revenue is tied to the detail row, we allocate it proportionally to the batch qty to prevent inflation.
                 DB::raw("
                     SUM(
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
-                                ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * transaction_details.harga_satuan)
+                                ABS(transaction_details.jumlah * transaction_details.harga_satuan)
                             ELSE 0 
                         END
                     ) as revenue_out,
                     SUM(
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * transaction_details.harga_satuan)
+                                ABS(transaction_details.jumlah * transaction_details.harga_satuan)
                             ELSE 0 
                         END
                     ) as revenue_ret,
                     SUM(
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
-                                ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
+                                ABS(COALESCE(batch_agg.total_cogs_batch, transaction_details.jumlah * items.hargaBeli, 0))
                             ELSE 0 
                         END
                     ) as cogs_out,
                     SUM(
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                ABS(COALESCE(transaction_batch_details.qty_diambil, transaction_details.jumlah) * COALESCE(item_batches.harga_modal_satuan, items.hargaBeli, 0))
+                                ABS(COALESCE(batch_agg.total_cogs_batch, transaction_details.jumlah * items.hargaBeli, 0))
                             ELSE 0 
                         END
                     ) as cogs_ret
@@ -389,7 +411,6 @@ class DashboardController extends Controller {
                   ->orWhere('transactions.sumber_tujuan', 'LIKE', '%RET_IN%');
             })
             ->where('transactions.sumber_tujuan', 'NOT LIKE', '%Makloon%')
-            ->whereRaw('(item_batches.kodeBarang = transaction_details.kodeBarang OR item_batches.id_batch IS NULL)')
             ->whereBetween('transactions.tanggal', [$startBound, $endBound])
             ->where('transactions.status', 'completed')
             ->groupBy('transaction_details.kodeBarang', 'items.nama')
@@ -423,7 +444,7 @@ class DashboardController extends Controller {
         $grandProfit = round($grandRevenue - $grandCogs, 2);
         
         // Margin: (Net Profit / Net Sales) * 100
-        $grandMargin = $grandRevenue > 0 ? round(($grandProfit / $grandRevenue) * 100, 2) : 0;
+        $grandMargin = (float)$grandRevenue > 0 ? round(((float)$grandProfit / (float)$grandRevenue) * 100, 2) : 0;
 
         return [
             'by_category' => $byCategory,

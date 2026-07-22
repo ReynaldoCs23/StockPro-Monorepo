@@ -103,72 +103,6 @@ export default function Dashboard() {
             filteredOutbound.reduce((acc, curr) => acc + Number(curr.jumlah || 0), 0) + 
             filteredReturns.filter(r => (r.sumber_tujuan || r.jenisReturn || '').startsWith('RET_OUT')).reduce((acc, curr) => acc + Number(curr.jumlah || 0), 0);
 
-        let pengeluaranVendor = 0;
-        let pendapatanDistributor = 0;
-        let hppBarangKeluar = 0;
-
-        const dailyMap = {};
-        const dateRangeArr = getDaysArray(startDate, endDate);
-        dateRangeArr.forEach(d => {
-            const dayStr = d.substring(8, 10);
-            dailyMap[d] = { Tanggal: d, Hari: dayStr, Pengeluaran: 0, Pemasukan: 0, Keuntungan: 0 };
-        });
-
-        const categoryProfit = {};
-
-        filteredInbound.forEach(trx => {
-            const d = trx.tanggal?.split('T')[0];
-            if (!d || !dailyMap[d]) return;
-            if (trx.sumber !== 'Dari Produksi' && trx.sumber !== 'Penggantian Retur Vendor') {
-                const cost = Number(trx.jumlah || 0) * Number(trx.harga_modal_satuan || 0);
-                pengeluaranVendor += cost;
-                dailyMap[d].Pengeluaran += cost;
-            }
-        });
-
-        filteredOutbound.forEach(trx => {
-            const d = trx.tanggal?.split('T')[0];
-            if (!d || !dailyMap[d]) return;
-            if (trx.tujuan == 'Penjualan') {
-                const item = items.find(i => i.kodeBarang === trx.kodeBarang);
-                const rev = Number(trx.totalTransaksi || (trx.jumlah * (item?.hargaJual || 0)));
-                const cogs = Number(trx.jumlah || 0) * Number(item?.hargaBeli || 0);
-                const profit = rev - cogs;
-
-                pendapatanDistributor += rev;
-                hppBarangKeluar += cogs;
-                dailyMap[d].Pemasukan += rev;
-                dailyMap[d].Keuntungan += profit;
-
-                if (item) {
-                    const cat = item.kategori || 'Uncategorized';
-                    if (!categoryProfit[cat]) categoryProfit[cat] = 0;
-                    categoryProfit[cat] += profit;
-                }
-            }
-        });
-
-        filteredReturns.forEach(trx => {
-            const d = trx.tanggal?.split('T')[0];
-            if (!d || !dailyMap[d]) return;
-            if (trx.jenisReturn !== 'Return ke Vendor') {
-                const item = items.find(i => i.kodeBarang === trx.kodeBarang);
-                const rev = Number(trx.jumlah || 0) * Number(item?.hargaJual || 0);
-                const cogs = Number(trx.jumlah || 0) * Number(item?.hargaBeli || 0);
-                const profit = rev - cogs;
-
-                pendapatanDistributor -= rev;
-                hppBarangKeluar -= cogs;
-                dailyMap[d].Pemasukan -= rev;
-                dailyMap[d].Keuntungan -= profit;
-
-                if (item) {
-                    const cat = item.kategori || 'Uncategorized';
-                    if (categoryProfit[cat]) categoryProfit[cat] -= profit;
-                }
-            }
-        });
-
         // 🔥 PERBAIKAN: List Semua Transaksi kini mencakup Return 🔥
         const allTransactions = [
             ...filteredInbound.map(t => ({ Tipe: 'Masuk', ID: t.idTransaksi, Tanggal: t.tanggal, Barang: t.namaBarang, Jumlah: `+${t.jumlah}`, Keterangan: t.namaSupplier })),
@@ -185,13 +119,6 @@ export default function Dashboard() {
                 };
             })
         ].sort((a, b) => new Date(b.Tanggal) - new Date(a.Tanggal));
-
-        const categoryProfitArray = Object.keys(categoryProfit)
-            .map(k => ({ name: k, profit: categoryProfit[k] }))
-            .sort((a, b) => b.profit - a.profit)
-            .slice(0, 4);
-
-        const maxProfit = categoryProfitArray.length > 0 ? Math.max(...categoryProfitArray.map(c => c.profit)) : 1;
 
         const todayString = getLocalYYYYMMDD(new Date());
         return {
@@ -286,10 +213,10 @@ export default function Dashboard() {
             {/* 3 Kartu Finansial Tengah */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 <div className="bg-white p-5 rounded-[20px] border border-slate-100 shadow-sm flex flex-col justify-center relative hover:shadow-md transition-shadow">
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pengeluaran Vendor</p>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Belanja Stok (Inbound)</p>
                     <h3 className="text-[22px] font-extrabold text-slate-800">{formatRp(backendStats.pengeluaranVendor?.value || 0)}</h3>
                     {renderTrendBadge(backendStats.pengeluaranVendor?.percentage || 0, 'expense')}
-                    <div className="text-[10px] text-slate-400 mt-2 font-medium">(Termasuk Biaya Makloon)</div>
+                    <div className="text-[10px] text-slate-400 mt-2 font-medium">(Semua Pembelian & Makloon)</div>
                 </div>
                 <div className="bg-white p-5 rounded-[20px] border border-slate-100 shadow-sm flex flex-col justify-center relative hover:shadow-md transition-shadow">
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Penjualan Distributor</p>
@@ -302,9 +229,10 @@ export default function Dashboard() {
                         <div className="flex items-center gap-3 mt-1">
                             <h3 className="text-[28px] font-extrabold text-white leading-none">{formatRp(backendStats.labaBersih)}</h3>
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-white/20 text-white shadow-sm border border-white/30 tracking-wide">
-                                Margin: {(backendStats.totalRevenue || 0) > 0 ? ((backendStats.labaBersih / backendStats.totalRevenue) * 100).toFixed(1) : 0}%
+                                Margin: {Number(backendStats.grand_margin_percentage || 0).toFixed(1)}%
                             </span>
                         </div>
+                        <div className="text-[10px] text-blue-200 mt-2 font-medium">*(Dihitung dari HPP stok yang terjual)</div>
                     </div>
                     <div className="absolute right-0 bottom-0 opacity-10">
                         <svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z" /></svg>
