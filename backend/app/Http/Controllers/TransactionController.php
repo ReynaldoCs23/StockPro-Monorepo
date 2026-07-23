@@ -1034,6 +1034,22 @@ class TransactionController extends Controller {
                 
                 if ($type === 'IN') {
                     $id_batch_baru = 'BCH-' . $trx->idTransaksi . '-' . $index;
+                    
+                    // Sinkronisasi Mapping MKL-IN dengan MakloonService
+                    $isMakloonIn = str_starts_with($trx->idTransaksi, 'MKL-IN');
+                    if ($isMakloonIn) {
+                        // $detail->lokasi_tujuan berisi String PT, dan lokasi_asal berisi String Vendor.
+                        $defaultLoc = DB::table('locations')->where('tipe_lokasi', 'internal')->first();
+                        $resolvedIdLokasi = $defaultLoc ? $defaultLoc->idLokasi : null;
+                        
+                        $idLokasiForBatch = $resolvedIdLokasi; // Paksa ID valid
+                        $lokasiRakForBatch = $detail->lokasi_tujuan; // Menyimpan "PT Mara Jaya..." sbg info
+                    } else {
+                        // Transaksi IN standard
+                        $idLokasiForBatch = $detail->lokasi_tujuan;
+                        $lokasiRakForBatch = $detail->lokasi_asal;
+                    }
+
                     \App\Models\ItemBatch::create([
                         'id_batch' => $id_batch_baru,
                         'kodeBarang' => $detail->kodeBarang,
@@ -1043,8 +1059,8 @@ class TransactionController extends Controller {
                         'qty_sisa' => $realQty,
                         'qty_booking' => 0,
                         'harga_modal_satuan' => round(floatval($detail->harga_satuan), 2),
-                        'idLokasi' => $detail->lokasi_tujuan,
-                        'lokasi_rak' => $detail->lokasi_asal,
+                        'idLokasi' => $idLokasiForBatch,
+                        'lokasi_rak' => $lokasiRakForBatch,
                     ]);
                     DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $realQty);
 
@@ -1063,7 +1079,6 @@ class TransactionController extends Controller {
                         DB::table('items')->where('kodeBarang', $detail->kodeBarang)->update(['hargaBeli' => $newHargaBeli]);
                     }
                     
-                    $isMakloonIn = str_starts_with($trx->idTransaksi, 'MKL-IN');
                     if ($isMakloonIn && !empty($trx->idReferensi)) {
                         $refTrx = DB::table('transactions')->where('idTransaksi', $trx->idReferensi)->first();
                         if ($refTrx && $refTrx->target_kode_barang === $detail->kodeBarang) {

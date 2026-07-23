@@ -192,6 +192,18 @@ class MakloonService
             // ==========================================
             // TAHAP 3: Terapkan HPP Final ke Insert Stok Masuk
             // ==========================================
+            // Resolusi idLokasi agar tidak melanggar Foreign Key (FK) Constraint
+            $inputLokasiTujuan = $financial['lokasi_tujuan'] ?? null;
+            // Pastikan string yang masuk benar-benar ada di tabel locations
+            $validLocation = DB::table('locations')->where('idLokasi', $inputLokasiTujuan)->first();
+            $resolvedIdLokasi = $validLocation ? $validLocation->idLokasi : null;
+            
+            // Jika tidak valid/kosong, ambil gudang utama sebagai fallback
+            if (!$resolvedIdLokasi) {
+                $defaultLoc = DB::table('locations')->where('tipe_lokasi', 'internal')->first();
+                $resolvedIdLokasi = $defaultLoc ? $defaultLoc->idLokasi : null;
+            }
+
             // Finished Goods detail
             TransactionDetail::create([
                 'idTransaksi' => $trxInId,
@@ -201,8 +213,8 @@ class MakloonService
                 'satuan_transaksi' => $fgItem->satuan_dasar ?? 'Pcs',
                 'jumlah_transaksi' => $receivedQty,
                 'harga_satuan' => $newHargaAcuan, // <--- HPP Final (Bahan Baku + Jasa)
-                'lokasi_asal' => $vendorName,
-                'lokasi_tujuan' => $financial['lokasi_tujuan'] ?? $companyName
+                'lokasi_asal' => $vendorName, // Nama vendor (informasional)
+                'lokasi_tujuan' => $resolvedIdLokasi // Simpan ID lokasi yang valid ke detail
             ]);
 
             // Create item_batch for Finished Goods
@@ -214,8 +226,8 @@ class MakloonService
                 'qty_awal' => $receivedQty,
                 'qty_sisa' => $receivedQty,
                 'harga_modal_satuan' => $newHargaAcuan, // <--- HPP Final (Bahan Baku + Jasa)
-                'idLokasi' => $financial['lokasi_tujuan'] ?? null,
-                'lokasi_rak' => $companyName,
+                'idLokasi' => $resolvedIdLokasi, // Wajib ID valid dari locations!
+                'lokasi_rak' => $companyName, // Bisa diisi nama PT atau rak (informasional)
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now()
             ]);
