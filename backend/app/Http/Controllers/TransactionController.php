@@ -480,10 +480,21 @@ class TransactionController extends Controller {
     }
 
     public function destroy(Request $request, $type, $id) {
+        $trx = DB::table('transactions')->where('idTransaksi', $id)->first();
+        if (!$trx) {
+            return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
+        }
+        if (strtolower($trx->status) !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Hanya transaksi berstatus Draft yang dapat dihapus permanen.'
+            ], 403);
+        }
+
         DB::beginTransaction();
         try {
             $this->revertTransaction($id);
-            $this->writeLog($request->log_user, 'DELETE', 'transactions', $request->log_detail ?? "Hapus Transaksi $id");
+            $this->writeLog($request->log_user, 'DELETE', 'transactions', $request->log_detail ?? "Hapus Transaksi Draft $id");
             DB::commit();
             \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Transaksi"));
@@ -752,7 +763,7 @@ class TransactionController extends Controller {
                     throw new \Exception("Stok tersedia tidak mencukupi untuk {$item['namaBarang']}. Sisa Tersedia: " . ($stokTersedia ?? 0));
                 }
                 
-                if ($status === 'scheduled') {
+                if ($status === 'scheduled' || $status === 'draft') {
                     DB::table('items')->where('kodeBarang', $item['kodeBarang'])->increment('stok_booking', $realQty);
                 } else if ($status === 'completed') {
                     DB::table('items')->where('kodeBarang', $item['kodeBarang'])->decrement('stok', $realQty, ['last_sold_at' => Carbon::now()]);
@@ -925,54 +936,65 @@ class TransactionController extends Controller {
     private function revertTransaction($idTransaksi) {
         $header = DB::table('transactions')->where('idTransaksi', $idTransaksi)->first();
         if(!$header) throw new \Exception("Transaksi tidak ditemukan di database.");
-
         $details = DB::table('transaction_details')->where('idTransaksi', $idTransaksi)->get();
         $type = $header->type;
+        $status = strtolower($header->status);
 
         foreach ($details as $detail) {
             if ($type === 'IN') {
-                $batch = DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->first();
-                if($batch && $batch->qty_sisa < $batch->qty_awal) {
-                    throw new \Exception("Gagal: Stok dari Inbound ini sudah ada yang terjual.");
+                if ($status !== 'draft') {
+                    $batch = DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->first();
+                    if($batch && $batch->qty_sisa < $batch->qty_awal) {
+                        throw new \Exception("Gagal: Stok dari Inbound ini sudah ada yang terjual.");
+                    }
+                    DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->delete();
+                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah);
                 }
-                DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->delete();
-                DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah);
             } 
             else if ($type === 'OUT') {
-                $batchDetails = DB::table('transaction_batch_details')
-                    ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
-                    ->where('transaction_batch_details.idTransaksi', $idTransaksi)
-                    ->where('item_batches.kodeBarang', $detail->kodeBarang)
-                    ->select('transaction_batch_details.*')
-                    ->get();
-                    
-                foreach($batchDetails as $bDetail) {
-                    DB::table('item_batches')->where('id_batch', $bDetail->id_batch)->increment('qty_sisa', $bDetail->qty_diambil);
-                }
-                DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
-            }
-            else if ($type === 'RET') {
-                $retJenis = $header->sumber_tujuan ?? '';
-                if (str_starts_with($retJenis, 'RET_OUT')) {
-                    // Was a decrement, so revert = increment + restore batches
+                if ($status === 'draft' || $status === 'scheduled') {
+                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
+                } else if ($status === 'completed') {
                     $batchDetails = DB::table('transaction_batch_details')
                         ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
                         ->where('transaction_batch_details.idTransaksi', $idTransaksi)
                         ->where('item_batches.kodeBarang', $detail->kodeBarang)
                         ->select('transaction_batch_details.*')
                         ->get();
+                        
                     foreach($batchDetails as $bDetail) {
                         DB::table('item_batches')->where('id_batch', $bDetail->id_batch)->increment('qty_sisa', $bDetail->qty_diambil);
                     }
                     DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
-                } else if (str_starts_with($retJenis, 'RET_IN')) {
-                    // Was an increment, so revert = decrement + remove batch
-                    $batch = DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->first();
-                    if($batch && $batch->qty_sisa < $batch->qty_awal) {
-                        throw new \Exception("Gagal: Stok dari Return ini sudah ada yang terjual.");
+                }
+            }
+            else if ($type === 'RET') {
+                $retJenis = $header->sumber_tujuan ?? '';
+                if (str_starts_with($retJenis, 'RET_OUT')) {
+                    if ($status === 'scheduled') {
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
+                        // Implementasi detail batal RET_OUT bisa ditambah jika perlu
+                    } else if ($status === 'completed') {
+                        $batchDetails = DB::table('transaction_batch_details')
+                            ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+                            ->where('transaction_batch_details.idTransaksi', $idTransaksi)
+                            ->where('item_batches.kodeBarang', $detail->kodeBarang)
+                            ->select('transaction_batch_details.*')
+                            ->get();
+                        foreach($batchDetails as $bDetail) {
+                            DB::table('item_batches')->where('id_batch', $bDetail->id_batch)->increment('qty_sisa', $bDetail->qty_diambil);
+                        }
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
                     }
-                    DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->delete();
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah);
+                } else if (str_starts_with($retJenis, 'RET_IN')) {
+                    if ($status !== 'draft') {
+                        $batch = DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->first();
+                        if($batch && $batch->qty_sisa < $batch->qty_awal) {
+                            throw new \Exception("Gagal: Stok dari Return ini sudah ada yang terjual.");
+                        }
+                        DB::table('item_batches')->where('idTransaksi_masuk', $idTransaksi)->where('kodeBarang', $detail->kodeBarang)->delete();
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah);
+                    }
                 }
             }
         }
@@ -1057,10 +1079,11 @@ class TransactionController extends Controller {
                         }
                     }
                 } else if ($type === 'OUT') {
-                    $stokTersedia = $itemMaster->stok - ($itemMaster->stok_booking ?? 0);
-                    if (!$itemMaster || $stokTersedia < $realQty) {
-                        throw new \Exception("Stok tersedia tidak mencukupi untuk {$detail->namaBarang}.");
+                    if (!$itemMaster) {
+                        throw new \Exception("Item {$detail->namaBarang} tidak ditemukan.");
                     }
+                    // Booking dilepas, stok fisik dikurangi
+                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $realQty);
                     DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $realQty, ['last_sold_at' => Carbon::now()]);
                     $this->consumeFifoBatches($trx->idTransaksi, $detail->kodeBarang, $realQty, false);
                 }

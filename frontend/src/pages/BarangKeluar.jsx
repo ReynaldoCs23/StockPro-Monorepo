@@ -149,7 +149,7 @@ export default function BarangKeluar() {
     };
 
     const handleDelete = async (id) => {
-        if (!confirm(`Hapus transaksi ${id}? Stok akan dikembalikan.`)) return;
+        if (!confirm(`Hapus draft transaksi ${id}? Data akan dihapus permanen.`)) return;
         try {
             if (!isApiOffline) {
                 await apiCall(`/transaction/OUT/${id}`, 'DELETE', {
@@ -347,7 +347,12 @@ export default function BarangKeluar() {
                     columns={reportColumns}
                     extraActions={(row) => (
                         <>
-                            {row.status === 'draft' && <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>}
+                            {row.status === 'draft' && (
+                                <>
+                                    <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>
+                                    {can('delete_barang_keluar') && <button onClick={() => handleDelete(row.idTransaksi)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Draft"><Trash2 className="w-4 h-4" /></button>}
+                                </>
+                            )}
                             {row.status === 'completed' && <button onClick={() => handleVoid(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Void Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>}
                         </>
                     )}
