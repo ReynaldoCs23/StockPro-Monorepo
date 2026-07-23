@@ -258,7 +258,7 @@ export default function BarangMasuk() {
         try {
             await apiCall(`/transaction/${row.idTransaksi}/approve`, 'POST');
             setToast({ message: 'Transaksi berhasil di-approve!', type: 'success' });
-            setTimeout(() => window.location.reload(), 1500);
+            setConfirmAction(null);
         } catch(e) { setToast({ message: e.message, type: 'error' }); }
         finally { setIsProcessing(false); }
     };

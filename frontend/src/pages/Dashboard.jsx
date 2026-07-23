@@ -72,7 +72,7 @@ export default function Dashboard() {
                 setRefreshKey(prev => prev + 1);
             });
             return () => {
-                window.Echo.leaveChannel('inventory-channel');
+                channel.stopListening('.stok.updated');
             };
         }
     }, []);

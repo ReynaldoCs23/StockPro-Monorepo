@@ -260,7 +260,7 @@ export default function BarangKeluar() {
         try {
             await apiCall(`/transaction/${row.idTransaksi}/approve`, 'POST');
             setToast({ message: 'Transaksi berhasil di-approve!', type: 'success' });
-            setTimeout(() => window.location.reload(), 1500);
+            setConfirmAction(null);
         } catch(e) { setToast({ message: e.message, type: 'error' }); }
         finally { setIsProcessing(false); }
     };
@@ -270,7 +270,7 @@ export default function BarangKeluar() {
         try {
             await apiCall(`/transaction/${row.idTransaksi}/void`, 'POST');
             setToast({ message: 'Transaksi berhasil dibatalkan!', type: 'success' });
-            setTimeout(() => window.location.reload(), 1500);
+            setConfirmAction(null);
         } catch(e) { setToast({ message: e.message, type: 'error' }); }
         finally { setIsProcessing(false); }
     };

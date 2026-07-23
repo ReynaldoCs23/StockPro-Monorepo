@@ -1020,7 +1020,7 @@ class TransactionController extends Controller {
     }
 
     public function approveTransaction($id) {
-        return DB::transaction(function () use ($id) {
+        $result = DB::transaction(function () use ($id) {
             $trx = DB::table('transactions')->where('idTransaksi', $id)->lockForUpdate()->first();
             if (!$trx) throw new \Exception('Transaksi tidak ditemukan.');
             if ($trx->status !== 'draft') throw new \Exception('Hanya transaksi draft yang bisa diapprove.');
@@ -1092,10 +1092,15 @@ class TransactionController extends Controller {
             DB::table('transactions')->where('idTransaksi', $id)->update(['status' => 'completed']);
             return response()->json(['message' => 'Transaksi berhasil di-approve.', 'status' => 'success']);
         });
+
+        \Illuminate\Support\Facades\Cache::flush();
+        event(new StokUpdated("Approval Transaksi $id"));
+
+        return $result;
     }
 
     public function voidTransaction($id) {
-        return DB::transaction(function () use ($id) {
+        $result = DB::transaction(function () use ($id) {
             $trx = DB::table('transactions')->where('idTransaksi', $id)->lockForUpdate()->first();
             if (!$trx) throw new \Exception('Transaksi tidak ditemukan.');
             if ($trx->status !== 'completed') throw new \Exception('Hanya transaksi completed yang bisa divoid.');
@@ -1127,5 +1132,10 @@ class TransactionController extends Controller {
             
             return response()->json(['message' => 'Transaksi berhasil dibatalkan (void).', 'status' => 'success']);
         });
+
+        \Illuminate\Support\Facades\Cache::flush();
+        event(new StokUpdated("Void Transaksi $id"));
+
+        return $result;
     }
 }
