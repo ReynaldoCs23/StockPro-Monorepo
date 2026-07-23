@@ -3,7 +3,7 @@ import { Printer, X } from '../icons/Icons';
 import { formatRp } from '../../utils/helpers';
 import { apiCall } from '../../utils/api';
 
-export default function SuratJalanPrintLayout({ data, onClose, currentUser, type = 'OUT', suppliers = [], customers = [], companyProfile }) {
+export default function NotaReturnPrintLayout({ data, onClose, currentUser, type = 'OUT', suppliers = [], customers = [], companyProfile }) {
     const [liveCompanyProfile, setLiveCompanyProfile] = useState(companyProfile);
 
     useEffect(() => {
@@ -16,7 +16,57 @@ export default function SuratJalanPrintLayout({ data, onClose, currentUser, type
 
     if (!data) return null;
 
-    const handlePrint = () => { window.print(); };
+    const handlePrint = () => {
+        const printContent = document.getElementById('printable-return');
+        if (!printContent) return;
+
+        // Buat iframe tersembunyi dengan ukuran fisik A4 agar Tailwind w-full tidak bernilai 0px
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.top = '-9999px';
+        iframe.style.left = '-9999px';
+        iframe.style.width = '210mm';
+        iframe.style.height = '297mm';
+        iframe.style.border = 'none';
+        iframe.style.zIndex = '-1000';
+        document.body.appendChild(iframe);
+
+        // Salin konten dokumen
+        const iframeDoc = iframe.contentWindow.document;
+        iframeDoc.open();
+
+        // Ambil style Tailwind dari head dokumen utama
+        const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+            .map(el => el.outerHTML)
+            .join('');
+
+        iframeDoc.write(`
+            <html>
+                <head>
+                    <title>Print Document</title>
+                    ${styles}
+                    <style>
+                        /* Reset khusus print */
+                        @page { size: auto; margin: 10mm; }
+                        body { background: white !important; margin: 0; padding: 0; color: black; }
+                        #printable-return { margin: 0 auto; box-shadow: none !important; }
+                    </style>
+                </head>
+                <body>
+                    ${printContent.outerHTML}
+                </body>
+            </html>
+        `);
+        iframeDoc.close();
+
+        // Tunggu sebentar agar resource/gambar termuat, lalu cetak
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            // Bersihkan iframe setelah cetak
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 800);
+    };
 
     const isMakloonOut = data.type === 'MAKLOON_OUT' || data.idTransaksi?.startsWith('MKL-OUT');
     const isMakloonIn  = data.type === 'MAKLOON_IN'  || data.idTransaksi?.startsWith('MKL-IN');
@@ -114,11 +164,11 @@ export default function SuratJalanPrintLayout({ data, onClose, currentUser, type
 
         return (
             <div className="fixed inset-0 print:static print:inset-auto z-[9999] bg-slate-50/50 backdrop-blur-sm overflow-y-auto print:overflow-visible flex print:block justify-center p-4 sm:p-8 print:m-0 print:p-0 print:w-full max-w-4xl mx-auto print:bg-white print-only-layout text-black" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                <div className="faktur-container print-safe-wrapper bg-white p-10 shadow-2xl relative rounded-xl mx-auto text-black print:w-[210mm] print:mx-auto print:p-0 print:shadow-none print:rounded-none print:overflow-visible" style={{ minHeight: '297mm' }}>
+                <div id="printable-return" className="faktur-container print-safe-wrapper bg-white p-10 shadow-2xl relative rounded-xl mx-auto text-black print:w-[210mm] print:mx-auto print:p-0 print:shadow-none print:rounded-none print:overflow-visible" style={{ minHeight: '297mm' }}>
                     
                     {/* Action Buttons - hidden on print */}
                     <div className="absolute top-4 right-4 flex gap-2 print:hidden">
-                        <button onClick={() => window.print()} className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold hover:bg-slate-800 border border-b shadow-sm">🖨️ Cetak</button>
+                        <button onClick={handlePrint} className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold hover:bg-slate-800 border border-b shadow-sm">🖨️ Cetak</button>
                         <button onClick={onClose} className="px-4 py-2 bg-white text-black rounded-lg text-sm font-bold hover:bg-slate-100 border border-b shadow-sm">✕ Tutup</button>
                     </div>
 
@@ -232,7 +282,7 @@ export default function SuratJalanPrintLayout({ data, onClose, currentUser, type
 
     return (
         <div className="fixed inset-0 z-[9999] bg-slate-50/50 backdrop-blur-sm overflow-y-auto print:bg-white flex justify-center p-4 sm:p-8 print:m-0 print:p-0 print:block print:w-full max-w-4xl mx-auto print-only-layout" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-            <div className="faktur-container w-full max-w-[850px] print:w-full print:max-w-none print:shadow-none bg-white p-8 sm:p-12 print:p-4 shadow-2xl relative rounded-xl print:rounded-none mx-auto text-slate-900 print:text-black print:block print:scale-[0.95] origin-top print:min-h-0 print:h-auto print:overflow-visible">
+            <div id="printable-return" className="faktur-container w-full max-w-[850px] print:w-full print:max-w-none print:shadow-none bg-white p-8 sm:p-12 print:p-4 shadow-2xl relative rounded-xl print:rounded-none mx-auto text-slate-900 print:text-black print:block print:scale-[0.95] origin-top print:min-h-0 print:h-auto print:overflow-visible">
 
                 {/* Header Actions */}
                 <div className="absolute top-4 right-4 flex gap-2 print:hidden">

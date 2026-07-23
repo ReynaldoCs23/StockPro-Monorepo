@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Undo, Package, Calendar, ArrowDownToLine, ArrowUpFromLine } from '../components/icons/Icons';
 import StatCardMini from '../components/ui/StatCardMini';
 import DataTable from '../components/ui/DataTable';
-import SuratJalanPrintLayout from '../components/ui/SuratJalanPrintLayout';
+import NotaReturnPrintLayout from '../components/ui/NotaReturnPrintLayout';
 import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
@@ -337,7 +337,7 @@ export default function BarangReturn() {
     return (
         <div className="space-y-6">
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-            <SuratJalanPrintLayout data={printData} onClose={() => setPrintData(null)} currentUser={currentUser} type="RET" suppliers={suppliers || []} customers={customers || []} companyProfile={companyProfile} />
+            <NotaReturnPrintLayout data={printData} onClose={() => setPrintData(null)} currentUser={currentUser} suppliers={suppliers} customers={customers} companyProfile={companyProfile} />
 
             <div className={`space-y-6 ${isPrintingRow ? 'hidden' : 'print:hidden'}`}>
                 {/* Date Filter */}

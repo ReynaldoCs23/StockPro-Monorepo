@@ -15,7 +15,58 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
 
     if (!data) return null;
 
-    const handlePrint = () => { window.print(); };
+    const handlePrint = () => {
+        const printContent = document.getElementById('printable-faktur');
+        if (!printContent) return;
+
+        // Buat iframe tersembunyi dengan ukuran fisik A4 agar Tailwind w-full tidak bernilai 0px
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.top = '-9999px';
+        iframe.style.left = '-9999px';
+        iframe.style.width = '210mm';
+        iframe.style.height = '297mm';
+        iframe.style.border = 'none';
+        iframe.style.zIndex = '-1000';
+        document.body.appendChild(iframe);
+
+        // Salin konten dokumen
+        const iframeDoc = iframe.contentWindow.document;
+        iframeDoc.open();
+
+        // Ambil style Tailwind dari head dokumen utama agar format tidak hancur
+        const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+            .map(el => el.outerHTML)
+            .join('');
+
+        iframeDoc.write(`
+            <html>
+                <head>
+                    <title>Print Document</title>
+                    ${styles}
+                    <style>
+                        /* Tambahkan reset khusus untuk print */
+                        @page { size: auto; margin: 10mm; }
+                        body { background: white !important; margin: 0; padding: 0; color: black; }
+                        /* Pastikan wrapper yang disalin (outerHTML) tetap mengambil ruang penuh */
+                        #printable-faktur { margin: 0 auto; box-shadow: none !important; }
+                    </style>
+                </head>
+                <body>
+                    ${printContent.outerHTML}
+                </body>
+            </html>
+        `);
+        iframeDoc.close();
+
+        // Tunggu sebentar agar resource/gambar termuat, lalu cetak
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            // Bersihkan iframe setelah cetak
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 800);
+    };
 
     // Resolve entity from suppliers/customers arrays
     const entityName = data.entitas || data.namaSupplier || data.namaPembeli || '-';
@@ -45,90 +96,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
         : [{ kodeBarang: data.kodeBarang, namaBarang: data.namaBarang, jumlah: data.jumlah, harga_satuan: 0 }];
 
     // Determine transaction type
-    const isMakloonOut = data.type === 'MAKLOON_OUT' || data.idTransaksi?.startsWith('MKL-OUT');
     const isPembelian = ['IN', 'MAKLOON_IN'].includes(data.type) || data.idTransaksi?.startsWith('IN-') || data.idTransaksi?.startsWith('MKL-IN');
-
-    // ============================================================
-    // TASK 3: MKL-OUT renders as Surat Jalan (no Faktur/tax layout)
-    // ============================================================
-    if (isMakloonOut) {
-        return (
-            <div className="fixed inset-0 z-[9999] bg-slate-50/50 backdrop-blur-sm overflow-y-auto flex justify-center p-4 sm:p-8 print:m-0 print:p-0 print:block print:w-full max-w-4xl mx-auto print:bg-white print-only-layout" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                <div className="faktur-container invoice-root-container bg-white relative rounded-xl print:rounded-none print:mx-auto print:w-full print:max-w-4xl mx-auto print:shadow-none shadow-2xl print:block print:min-h-0 print:h-auto print:overflow-visible" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '11px', color: '#000' }}>
-
-                    <div className="absolute top-4 right-4 flex gap-2 print:hidden">
-                        <button onClick={handlePrint} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">🖨️ Cetak</button>
-                        <button onClick={onClose} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300">✕ Tutup</button>
-                    </div>
-
-                    {/* Header */}
-                    <div style={{ borderBottom: '2px solid #000', paddingBottom: '10px', marginBottom: '16px' }}>
-                        <h1 style={{ fontSize: '18px', fontWeight: 'bold', textAlign: 'center', margin: 0 }}>SURAT JALAN MAKLOON</h1>
-                        <p style={{ textAlign: 'center', fontSize: '10px', color: '#555', marginTop: '4px' }}>No: {data.idTransaksi} &nbsp;|&nbsp; Tanggal: {data.tanggal ? new Date(data.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</p>
-                    </div>
-
-                    {/* Destination Info */}
-                    <div style={{ marginBottom: '16px', fontSize: '11px' }}>
-                        <table>
-                            <tbody>
-                                <tr><td style={{ padding: '2px 0', width: '80px' }}>Dari</td><td style={{ padding: '2px 0' }}>: <strong>{liveCompanyProfile?.nama || 'PT Mara Jaya Dewi Sakti'}</strong></td></tr>
-                                <tr><td style={{ padding: '2px 0' }}>Kepada</td><td style={{ padding: '2px 0' }}>: <strong>{entityData.nama}</strong></td></tr>
-                                <tr><td style={{ padding: '2px 0', verticalAlign: 'top' }}>Alamat</td><td style={{ padding: '2px 0' }}>: {entityData.alamat}</td></tr>
-                                {data.keterangan && <tr><td style={{ padding: '2px 0' }}>Keterangan</td><td style={{ padding: '2px 0' }}>: {data.keterangan}</td></tr>}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Simple Items Table - NO HARGA */}
-                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-                        <thead>
-                            <tr>
-                                <th style={{ border: '1px solid #000', padding: '6px 4px', textAlign: 'center', fontWeight: 'bold', fontSize: '10px', width: '6%' }}>No.</th>
-                                <th style={{ border: '1px solid #000', padding: '6px 4px', textAlign: 'center', fontWeight: 'bold', fontSize: '10px', width: '20%' }}>Kode Barang</th>
-                                <th style={{ border: '1px solid #000', padding: '6px 4px', textAlign: 'left', fontWeight: 'bold', fontSize: '10px', width: '49%' }}>Nama Barang</th>
-                                <th style={{ border: '1px solid #000', padding: '6px 4px', textAlign: 'center', fontWeight: 'bold', fontSize: '10px', width: '12%' }}>Qty</th>
-                                <th style={{ border: '1px solid #000', padding: '6px 4px', textAlign: 'center', fontWeight: 'bold', fontSize: '10px', width: '13%' }}>Satuan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {itemsList.map((item, idx) => (
-                                <tr key={idx}>
-                                    <td style={{ border: '1px solid #000', padding: '5px 4px', textAlign: 'center' }}>{idx + 1}</td>
-                                    <td style={{ border: '1px solid #000', padding: '5px 4px', textAlign: 'center', fontFamily: 'monospace', fontSize: '10px' }}>{item.kodeBarang}</td>
-                                    <td style={{ border: '1px solid #000', padding: '5px 4px' }}>{item.namaBarang || item.item_nama || '-'}</td>
-                                    <td style={{ border: '1px solid #000', padding: '5px 4px', textAlign: 'center', fontWeight: 'bold' }}>{item.jumlah}</td>
-                                    <td style={{ border: '1px solid #000', padding: '5px 4px', textAlign: 'center' }}>Pcs</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-
-                    {/* Signatures and Footer */}
-                    <div className="signature-section avoid-break">
-                        <div className="print:mt-8" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', textAlign: 'center', fontSize: '10px' }}>
-                            <div style={{ width: '45%' }}>
-                                <p>Yang Menyerahkan,</p>
-                                <div style={{ height: '60px' }}></div>
-                                <p style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{liveCompanyProfile?.nama || 'PT Mara Jaya Dewi Sakti'}</p>
-                                <p>{liveCompanyProfile?.penanggung_jawab || 'GEDE ARIADI'}</p>
-                            </div>
-                            <div style={{ width: '45%' }}>
-                                <p>Yang Menerima,</p>
-                                <div style={{ height: '60px' }}></div>
-                                <p style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{entityData.nama}</p>
-                                <p>{entityData.penanggung_jawab}</p>
-                            </div>
-                        </div>
-
-                        <div style={{ marginTop: '30px', fontSize: '9px', color: '#666', textAlign: 'center', borderTop: '1px solid #ddd', paddingTop: '8px' }}>
-                            * Pastikan kuantitas fisik sesuai sebelum menandatangani dokumen ini.
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        );
-    }
 
     // ============================================================
     // FAKTUR PAJAK LAYOUT (for IN, MAKLOON_IN, OUT)
@@ -162,11 +130,11 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
 
     return (
         <div className="fixed inset-0 print:static print:inset-auto z-[9999] bg-slate-50/50 backdrop-blur-sm overflow-y-auto print:overflow-visible flex print:block justify-center p-4 sm:p-8 print:m-0 print:p-0 print:w-[190mm] print:max-w-[190mm] print:mx-auto max-w-4xl mx-auto print:bg-white print-only-layout text-black" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-            <div className="faktur-container print-safe-wrapper bg-white p-10 shadow-2xl relative rounded-xl mx-auto text-black print:w-[190mm] print:max-w-[190mm] print:mx-auto print:p-0 print:shadow-none print:rounded-none print:overflow-visible" style={{ minHeight: '297mm' }}>
+            <div id="printable-faktur" className="faktur-container print-safe-wrapper bg-white p-10 shadow-2xl relative rounded-xl mx-auto text-black print:w-[190mm] print:max-w-[190mm] print:mx-auto print:p-0 print:shadow-none print:rounded-none print:overflow-visible" style={{ minHeight: '297mm' }}>
                 
                 {/* Action Buttons - hidden on print */}
                 <div className="absolute top-4 right-4 flex gap-2 print:hidden">
-                    <button onClick={() => window.print()} className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold hover:bg-slate-800 border border-b shadow-sm">🖨️ Cetak</button>
+                    <button onClick={handlePrint} className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold hover:bg-slate-800 border border-b shadow-sm">🖨️ Cetak</button>
                     <button onClick={onClose} className="px-4 py-2 bg-white text-black rounded-lg text-sm font-bold hover:bg-slate-100 border border-b shadow-sm">✕ Tutup</button>
                 </div>
 

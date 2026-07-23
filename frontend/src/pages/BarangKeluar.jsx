@@ -8,6 +8,7 @@ import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
+import SuratJalanMakloon from '../components/ui/SuratJalanMakloon';
 import { apiCall } from '../utils/api';
 import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate } from '../utils/helpers';
 
@@ -305,7 +306,12 @@ export default function BarangKeluar() {
     return (
         <div className="space-y-6">
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-            <FakturPajak data={printData} onClose={() => setPrintData(null)} suppliers={suppliers} customers={customers} companyProfile={companyProfile} />
+            
+            {printData && (
+                (printData.type === 'MAKLOON_OUT' || printData.idTransaksi?.startsWith('MKL-OUT')) 
+                ? <SuratJalanMakloon data={printData} onClose={() => setPrintData(null)} companyProfile={companyProfile} suppliers={suppliers} customers={customers} />
+                : <FakturPajak data={printData} onClose={() => setPrintData(null)} suppliers={suppliers} customers={customers} companyProfile={companyProfile} />
+            )}
 
             <div className={`space-y-6 ${isPrintingRow ? 'hidden' : 'print:hidden'}`}>
                 <div className="flex justify-end mb-2">
