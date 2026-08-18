@@ -484,10 +484,10 @@ class TransactionController extends Controller {
         if (!$trx) {
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
-        if (strtolower($trx->status) !== 'draft') {
+        if (!in_array(strtolower($trx->status), ['draft', 'scheduled'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal: Hanya transaksi berstatus Draft yang dapat dihapus permanen.'
+                'message' => 'Gagal: Hanya transaksi berstatus Draft atau Scheduled yang dapat dihapus permanen.'
             ], 403);
         }
 

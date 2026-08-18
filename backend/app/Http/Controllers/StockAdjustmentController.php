@@ -8,9 +8,12 @@ use App\Models\Item;
 use App\Models\ItemBatch;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Traits\HasSystemLogs;
 
 class StockAdjustmentController extends Controller
 {
+    use HasSystemLogs;
+
     public function index(Request $request)
     {
         $query = StockAdjustment::with(['item', 'user'])->orderBy('created_at', 'desc');
@@ -92,6 +95,9 @@ class StockAdjustmentController extends Controller
                 'quantity' => $quantity,
                 'reason' => $request->reason,
             ]);
+
+            $logDesc = ($type === 'addition' ? 'Penambahan' : 'Pengurangan') . " Stok: $kodeBarang sebanyak $quantity (Alasan: {$request->reason})";
+            $this->writeLog(auth()->user()->namaLengkap ?? 'System', 'CREATE', 'stock_adjustments', $logDesc);
 
             DB::commit();
 

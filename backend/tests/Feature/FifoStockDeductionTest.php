@@ -108,6 +108,10 @@ class FifoStockDeductionTest extends TestCase
         $response = $this->postJson('/api/transaction/OUT', $payload);
         $response->assertStatus(200);
 
+        // Approve transaction to execute FIFO deduction on item_batches
+        $actualId = $response->json('idTransaksi');
+        $this->postJson('/api/transaction/' . $actualId . '/approve');
+
         // Critical Assertion: Assert that the oldest batch is fully depleted (0 qty)
         $this->assertDatabaseHas('item_batches', [
             'id_batch' => 'BCH-OLD-01',

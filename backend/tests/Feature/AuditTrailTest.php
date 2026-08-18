@@ -35,7 +35,7 @@ class AuditTrailTest extends TestCase
             'idTransaksi' => 'INV-TEST-DELETE',
             'type' => 'IN',
             'tanggal' => now()->format('Y-m-d'),
-            'status' => 'completed',
+            'status' => 'draft',
         ]);
 
         // Execute a DELETE request on that transaction

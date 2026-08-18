@@ -271,7 +271,7 @@ function MainApp() {
         return 'Dashboard';
     };
 
-    const hasLowStock = Array.isArray(items) && items.some(item => Number(item.stok) <= Number(item.minStok));
+    const hasLowStock = Array.isArray(items) && items.some(item => Number(item.stok) < Number(item.minStok));
 
     // Fallback for Dashboard setActiveTab
     const handleSetActiveTabFallback = (tabId) => {

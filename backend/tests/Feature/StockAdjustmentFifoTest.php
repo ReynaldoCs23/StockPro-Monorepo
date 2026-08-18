@@ -226,6 +226,10 @@ class StockAdjustmentFifoTest extends TestCase
         $response = $this->postJson('/api/transaction/OUT', $payload);
 
         $response->assertSuccessful();
+        
+        // Approve transaction to execute stock deduction
+        $actualId = $response->json('idTransaksi');
+        $this->postJson('/api/transaction/' . $actualId . '/approve');
 
         $this->assertDatabaseHas('item_batches', [
             'id_batch' => 'ADJ-LOG-01',

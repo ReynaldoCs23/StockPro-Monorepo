@@ -93,6 +93,10 @@ class TransactionTest extends TestCase
 
         // Assert the response is successful
         $response->assertStatus(200);
+        
+        // Approve transaction to trigger batch creation
+        $actualId = $response->json('idTransaksi');
+        $this->postJson('/api/transaction/' . $actualId . '/approve');
 
         // Critical Assertion: item_batches table has a new row
         $this->assertDatabaseHas('item_batches', [
@@ -165,6 +169,10 @@ class TransactionTest extends TestCase
         $response = $this->postJson('/api/transaction/OUT', $payload);
 
         $response->assertStatus(200);
+        
+        // Approve transaction to trigger stock deduction
+        $actualId = $response->json('idTransaksi');
+        $this->postJson('/api/transaction/' . $actualId . '/approve');
 
         // Critical Assertion: item_batches quantity is reduced to 80
         $this->assertDatabaseHas('item_batches', [

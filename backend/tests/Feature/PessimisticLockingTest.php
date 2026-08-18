@@ -91,6 +91,10 @@ class PessimisticLockingTest extends TestCase
         $response = $this->postJson('/api/transaction/OUT', $payload);
         $response->assertStatus(200);
 
+        // Approve transaction to execute stock deduction
+        $actualId = $response->json('idTransaksi');
+        $this->postJson('/api/transaction/' . $actualId . '/approve');
+
         // Assert that the code executed successfully, proving lockForUpdate() syntax is valid and didn't crash.
         // Since we cannot run true parallel threads easily in basic PHPUnit, ensuring it runs without PDO exceptions 
         // within a MySQL environment guarantees the lock syntax (lockForUpdate) is functional.
