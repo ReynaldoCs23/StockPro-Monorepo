@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import { Package, Tags, ArrowDownToLine, ArrowUpFromLine, Download, Plus, Search, Calendar } from '../components/icons/Icons';
 import StatCardMini from '../components/ui/StatCardMini';
+import ProjectionDashboard from '../components/ProjectionDashboard';
 import { formatRp, getDaysArray } from '../utils/helpers';
 import { apiCall } from '../utils/api';
 
@@ -41,7 +42,6 @@ export default function Dashboard() {
         totalProfit: 0,
         vipCustomers: [],
         slowMoving: [],
-        critical_stock_items: [],
         stokDibooking: 0,
         deadStock: [],
     });
@@ -336,8 +336,13 @@ export default function Dashboard() {
                 </div>
             </div>
 
+            {/* === NEW ROW: AI Projections === */}
+            <div className="grid grid-cols-1 mb-6">
+                <ProjectionDashboard />
+            </div>
+
             {/* === NEW ROW: Donut Chart + VIP Customers + Inventory Turnover === */}
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
                 {/* Widget 1: Profit Contribution Donut */}
                 <div className="bg-white p-6 rounded-[20px] border border-slate-100 shadow-sm flex flex-col items-center">
@@ -400,34 +405,7 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Widget 3: Peringatan Stok Kritis (Low Stock Alerts) */}
-                <div className="bg-white p-6 rounded-[20px] border border-slate-100 shadow-sm flex flex-col">
-                    <h3 className="text-base font-extrabold text-slate-800">Peringatan Stok Kritis</h3>
-                    <p className="text-[13px] text-slate-400 mb-4">Butuh Restock Segera</p>
-                    <div className="flex-1 space-y-1">
-                        {backendStats.critical_stock_items && backendStats.critical_stock_items.length > 0 ? (
-                            backendStats.critical_stock_items.map((item, i) => (
-                                <div key={i} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                                    <div>
-                                        <div className="text-[13px] font-bold text-slate-700">{item.namaBarang}</div>
-                                        <div className="text-[11px] text-slate-400">{item.kodeBarang}</div>
-                                    </div>
-                                    <div>
-                                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold ${
-                                            item.stok === 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
-                                        }`}>
-                                            Stok: {item.stok}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="text-center text-slate-400 text-[13px] py-10 font-medium">Semua stok dalam kondisi aman</div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Widget 4: Dead Stock */}
+                {/* Widget 3: Dead Stock */}
                 <div className="bg-white p-6 rounded-[20px] border border-slate-100 shadow-sm flex flex-col">
                     <h3 className="text-base font-extrabold text-slate-800">Barang Tidak Bergerak</h3>
                     <p className="text-[13px] text-slate-400 mb-4">Tidak ada transaksi keluar &gt; 30 hari</p>

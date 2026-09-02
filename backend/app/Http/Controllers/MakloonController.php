@@ -20,10 +20,16 @@ class MakloonController extends Controller
         $this->idGenerator = $idGenerator;
     }
 
-    public function index()
+    public function index(Request $request)
     {
         try {
-            $orders = MakloonOrder::with(['vendor', 'product'])->orderBy('created_at', 'desc')->get();
+            $query = MakloonOrder::with(['vendor', 'product'])->orderBy('created_at', 'desc');
+            
+            if ($request->has('date') && !empty($request->date)) {
+                $query->whereDate('created_at', $request->date);
+            }
+            
+            $orders = $query->get();
             return response()->json($orders);
         } catch (\Exception $e) {
             \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());
@@ -74,7 +80,9 @@ class MakloonController extends Controller
                 ->where('keterangan', 'like', "%{$order->wo_number}%")
                 ->orderBy('created_at', 'desc')->first();
                 
+            $idTransaksi = null;
             if ($transaction) {
+                $idTransaksi = $transaction->idTransaksi;
                 $summary = collect($transaction->details)->map(function ($item) { 
                     return $item->namaBarang . ' (' . $item->jumlah . ')'; 
                 })->implode(', ');
@@ -85,7 +93,10 @@ class MakloonController extends Controller
                 $this->writeLog($logUser, 'CREATE', 'transactions', $logDesc);
             }
             
-            return response()->json(['message' => 'Bahan baku berhasil dikirim ke vendor']);
+            return response()->json([
+                'message' => 'Bahan baku berhasil dikirim ke vendor',
+                'idTransaksi' => $idTransaksi
+            ]);
         } catch (\Exception $e) {
             \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());
             return response()->json([
@@ -122,7 +133,9 @@ class MakloonController extends Controller
                 ->where('keterangan', 'like', "%{$order->wo_number}%")
                 ->orderBy('created_at', 'desc')->first();
                 
+            $idTransaksi = null;
             if ($transaction) {
+                $idTransaksi = $transaction->idTransaksi;
                 $summary = collect($transaction->details)->map(function ($item) { 
                     return $item->namaBarang . ' (' . $item->jumlah . ')'; 
                 })->implode(', ');
@@ -133,7 +146,38 @@ class MakloonController extends Controller
                 $this->writeLog($logUser, 'CREATE', 'transactions', $logDesc);
             }
             
-            return response()->json(['message' => 'Barang jadi berhasil diterima dari vendor']);
+            return response()->json([
+                'message' => 'Barang jadi berhasil diterima dari vendor',
+                'idTransaksi' => $idTransaksi
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Maaf, terjadi kesalahan pada sistem. Silakan coba beberapa saat lagi.',
+            ], 500);
+        }
+    }
+
+    public function cancel(Request $request, $id)
+    {
+        try {
+            $order = MakloonOrder::findOrFail($id);
+            
+            if ($order->status !== 'Pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Hanya order dengan status Pending yang dapat dibatalkan.'
+                ], 400);
+            }
+            
+            $order->status = 'Cancelled';
+            $order->save();
+            
+            $logUser = $request->log_user ?? (auth()->user() ? (auth()->user()->namaLengkap ?? auth()->user()->username) : 'System');
+            $this->writeLog($logUser, 'UPDATE', 'makloon_orders', "Membatalkan Makloon Order: {$order->wo_number}");
+            
+            return response()->json(['message' => 'Order Makloon berhasil dibatalkan']);
         } catch (\Exception $e) {
             \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());
             return response()->json([

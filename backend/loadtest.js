@@ -15,7 +15,7 @@ export const options = {
 };
 
 export default function () {
-    const baseUrl = 'http://127.0.0.1:8000';
+    const baseUrl = 'http://stockpro-monorepo.test/backend/public';
     
     // 2. Login Scenario
     const loginPayload = JSON.stringify({

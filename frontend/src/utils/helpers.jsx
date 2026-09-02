@@ -57,9 +57,9 @@ export const getLocalYYYYMMDD = (dateStr = null) => {
 export const formatLocalDate = (dateStr) => {
     if (!dateStr) return '-';
     
-    // Safe string manipulation that ignores browser timezones completely
-    const rawDate = dateStr; // e.g., "2026-06-21" or "2026-06-21 14:30:00"
-    const dateOnly = rawDate.split(' ')[0]; // Gets "2026-06-21"
+    // Menangani format datetime standar SQL (spasi) maupun ISO 8601 (T)
+    const rawDate = String(dateStr); 
+    const dateOnly = rawDate.split('T')[0].split(' ')[0]; 
     const [year, month, day] = dateOnly.split('-');
     
     if (!year || !month || !day) return dateStr;

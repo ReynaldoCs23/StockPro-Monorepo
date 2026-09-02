@@ -5,7 +5,7 @@ import DataTable from '../components/ui/DataTable';
 import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
 import { apiCall } from '../utils/api';
-import { formatLocalDate } from '../utils/helpers';
+import { formatLocalDate, getLocalYYYYMMDD } from '../utils/helpers';
 import useAppStore from '../store/useAppStore';
 
 export default function StockAdjustment() {
@@ -17,6 +17,7 @@ export default function StockAdjustment() {
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [dateFilter, setDateFilter] = useState(getLocalYYYYMMDD());
     
     const [isModalOpen, setModalOpen] = useState(false);
     const [toast, setToast] = useState(null);
@@ -31,7 +32,8 @@ export default function StockAdjustment() {
     const fetchAdjustments = () => {
         if (!isApiOffline) {
             setIsProcessing(true);
-            apiCall(`/stock-adjustments?page=${currentPage}`)
+            const query = dateFilter ? `?page=${currentPage}&date=${dateFilter}` : `?page=${currentPage}`;
+            apiCall(`/stock-adjustments${query}`)
                 .then(data => {
                     if (data && data.data) {
                         setAdjustments(data.data);
@@ -48,7 +50,7 @@ export default function StockAdjustment() {
 
     useEffect(() => {
         fetchAdjustments();
-    }, [currentPage, isApiOffline]);
+    }, [currentPage, isApiOffline, dateFilter]);
 
     const openAddModal = () => {
         setFormData({
@@ -136,44 +138,50 @@ export default function StockAdjustment() {
         <div className="space-y-6 animate-fadeIn">
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-            {/* Header Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
-                <div>
-                    <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">Penyesuaian Stok (Opname)</h1>
-                    <p className="text-slate-500 mt-1 text-sm">Koreksi kuantitas stok tanpa menghapus riwayat FIFO sebelumnya.</p>
+            {/* 1. Filter Tanggal di Kanan Atas */}
+            <div className="flex justify-end mb-2">
+                <div className="flex items-center bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+                    <Calendar className="w-4 h-4 text-slate-400 mr-2" />
+                    <input 
+                        type="date" 
+                        value={dateFilter} 
+                        onChange={(e) => {
+                            setCurrentPage(1);
+                            setDateFilter(e.target.value);
+                        }}
+                        className="text-[13px] outline-none font-semibold text-slate-700 bg-transparent cursor-pointer" 
+                    />
                 </div>
-                {can('create_penyesuaian_stok') && (
-                    <button 
-                        onClick={openAddModal}
-                        className="flex items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-600/20 active:scale-[0.98]"
-                    >
-                        <Plus className="w-5 h-5 mr-2" />
-                        Tambah Penyesuaian
-                    </button>
-                )}
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 2. Kartu Metrik (Stat Cards) sejajar 2 kolom */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 <StatCardMini 
                     title="Total Penyesuaian" 
                     value={adjustments.length} 
                     icon={ClipboardList}
-                    color="blue"
+                    bgClass="bg-blue-50"
+                    colorClass="text-blue-600"
+                />
+                <StatCardMini 
+                    title="Total Qty Disesuaikan" 
+                    value={Math.abs(adjustments.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0))} 
+                    icon={FileText}
+                    bgClass="bg-emerald-50"
+                    colorClass="text-emerald-600"
                 />
             </div>
 
-            {/* Data Table */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-x-auto w-full">
-                <DataTable 
-                    title="Riwayat Penyesuaian"
-                    columns={columns} 
-                    data={adjustments} 
-                    currentPage={currentPage}
-                    lastPage={lastPage}
-                    onPageChange={setCurrentPage}
-                />
-            </div>
+            {/* 3 & 4. Data Table dengan Toolbar & Padding seragam */}
+            <DataTable 
+                title="Daftar Penyesuaian Stok"
+                columns={columns} 
+                data={adjustments} 
+                currentPage={currentPage}
+                lastPage={lastPage}
+                onPageChange={setCurrentPage}
+                onAdd={can('create_penyesuaian_stok') ? openAddModal : null}
+            />
 
             {/* Modal Form */}
             <Modal isOpen={isModalOpen} onClose={() => !isProcessing && setModalOpen(false)} title="Tambah Penyesuaian Stok" maxWidth="max-w-2xl">

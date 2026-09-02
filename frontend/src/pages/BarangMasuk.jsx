@@ -55,24 +55,30 @@ export default function BarangMasuk() {
         setCurrentPage(1);
     }, [filterType, startDate, endDate]);
 
-    useEffect(() => {
+    const fetchTransactions = async () => {
         if (!isApiOffline) {
             setIsProcessing(true);
             const safeStart = getLocalYYYYMMDD(new Date(startDate));
             const safeEnd = getLocalYYYYMMDD(new Date(endDate));
-            apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`)
-                .then(data => {
-                    if (data && data.data) {
-                        setInbound(data.data);
-                        setLastPage(data.last_page || 1);
-                    } else {
-                        setInbound(Array.isArray(data) ? data : []);
-                        setLastPage(1);
-                    }
-                    setIsProcessing(false);
-                })
-                .catch(() => setIsProcessing(false));
+            try {
+                const data = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`);
+                if (data && data.data) {
+                    setInbound(data.data);
+                    setLastPage(data.last_page || 1);
+                } else {
+                    setInbound(Array.isArray(data) ? data : []);
+                    setLastPage(1);
+                }
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setIsProcessing(false);
+            }
         }
+    };
+
+    useEffect(() => {
+        fetchTransactions();
     }, [filterType, startDate, endDate, currentPage]);
 
 
@@ -228,18 +234,24 @@ export default function BarangMasuk() {
                 });
             }
 
-            // Format agar DataTable tetap bisa membaca summary-nya
+            // Format agar DataTable tetap bisa membaca summary-nya saat OFFLINE
             const summaryPayload = {
                 ...payload,
                 jumlah: validItems.reduce((sum, item) => sum + getActualBaseQty(item), 0),
                 namaBarang: `${validItems.length} Jenis Barang`
             };
 
-            if (editId) {
-                setInbound(inbound.map(t => t.idTransaksi === editId ? summaryPayload : t));
+            // 1. Picu Re-fetch Setelah Sukses (Data Segar dari Server + Relasi)
+            if (!isApiOffline) {
+                await fetchTransactions(); // Update state dengan eager loaded data
             } else {
-                setInbound([summaryPayload, ...inbound]);
+                if (editId) {
+                    setInbound(inbound.map(t => t.idTransaksi === editId ? summaryPayload : t));
+                } else {
+                    setInbound([summaryPayload, ...inbound]);
+                }
             }
+            
             setItems(items.map(it => {
                 const usedItem = validItems.find(v => v.kodeBarang === it.kodeBarang);
                 if (usedItem) return { ...it, stok: Number(it.stok) + getActualBaseQty(usedItem) };

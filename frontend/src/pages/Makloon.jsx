@@ -25,6 +25,7 @@ export default function Makloon() {
     // --- STATE MAKLOON ORDERS ---
     const [makloonOrders, setMakloonOrders] = useState([]);
     const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+    const [dateFilter, setDateFilter] = useState(getLocalYYYYMMDD());
 
     // --- FORM BAGIAN 2: CREATE MAKLOON ORDER ---
     const [vendor, setVendor] = useState('');
@@ -45,8 +46,7 @@ export default function Makloon() {
     const [taxPercent, setTaxPercent] = useState(11);
     const [receiveLokasi, setReceiveLokasi] = useState('');
     const [sendConfirmId, setSendConfirmId] = useState(null);
-
-    // FETCH DATA
+    const [approvalPrompt, setApprovalPrompt] = useState(null); // { idTransaksi, type }
     const fetchBoms = async () => {
         if (isApiOffline) return;
         setIsLoadingBoms(true);
@@ -60,11 +60,12 @@ export default function Makloon() {
         }
     };
 
-    const fetchOrders = async () => {
+    const fetchOrders = async (date) => {
         if (isApiOffline) return;
         setIsLoadingOrders(true);
         try {
-            const response = await apiCall('/makloon-orders', 'GET');
+            const query = date ? `?date=${date}` : '';
+            const response = await apiCall(`/makloon-orders${query}`, 'GET');
             setMakloonOrders(response || []);
         } catch (err) {
             console.error("Gagal menarik data Makloon Orders:", err);
@@ -75,8 +76,8 @@ export default function Makloon() {
 
     useEffect(() => {
         fetchBoms();
-        fetchOrders();
-    }, [isApiOffline]);
+        fetchOrders(dateFilter);
+    }, [isApiOffline, dateFilter]);
 
     // ==========================================
     // LOGIKA BAGIAN 1: SIMPAN RESEP BOM
@@ -171,12 +172,35 @@ export default function Makloon() {
         setIsProcessing(true);
         try {
             if (!isApiOffline) {
-                await apiCall(`/makloon-orders/${id}/send`, 'POST');
-                await fetchOrders();
+                const response = await apiCall(`/makloon-orders/${id}/send`, 'POST');
+                await fetchOrders(dateFilter);
+                if (response?.idTransaksi) {
+                    setApprovalPrompt({ idTransaksi: response.idTransaksi, type: 'send' });
+                } else {
+                    setToast({ message: 'Bahan baku berhasil dikirim ke vendor!', type: 'success' });
+                }
+            } else {
+                setToast({ message: 'Bahan baku berhasil dikirim ke vendor!', type: 'success' });
             }
-            setToast({ message: 'Bahan baku berhasil dikirim ke vendor!', type: 'success' });
         } catch (err) {
             setErrorMsg("Error Validation: " + err.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleCancelOrder = async (id) => {
+        if (!window.confirm("Apakah Anda yakin ingin membatalkan order makloon ini?")) return;
+        setErrorMsg(''); setSuccessMsg('');
+        setIsProcessing(true);
+        try {
+            if (!isApiOffline) {
+                await apiCall(`/makloon-orders/${id}/cancel`, 'POST');
+                await fetchOrders(dateFilter);
+            }
+            setToast({ message: 'Order Makloon berhasil dibatalkan!', type: 'success' });
+        } catch (err) {
+            setErrorMsg("Gagal membatalkan order: " + err.message);
         } finally {
             setIsProcessing(false);
         }
@@ -212,7 +236,7 @@ export default function Makloon() {
         setShowReceiveModal(false);
         try {
             if (!isApiOffline) {
-                await apiCall(`/makloon-orders/${receiveOrderId}/receive`, 'POST', {
+                const response = await apiCall(`/makloon-orders/${receiveOrderId}/receive`, 'POST', {
                     received_qty: qty,
                     harga_satuan: fee,
                     pajak_persen: tax,
@@ -221,12 +245,32 @@ export default function Makloon() {
                     lokasi_tujuan: receiveLokasi
                 });
                 await fetchOrders();
+                if (response?.idTransaksi) {
+                    setApprovalPrompt({ idTransaksi: response.idTransaksi, type: 'receive' });
+                } else {
+                    setToast({ message: 'Barang jadi berhasil diterima dan stok diupdate!', type: 'success' });
+                }
+            } else {
+                setToast({ message: 'Barang jadi berhasil diterima dan stok diupdate!', type: 'success' });
             }
-            setToast({ message: 'Barang jadi berhasil diterima dan stok diupdate!', type: 'success' });
         } catch (err) {
             setErrorMsg("Error Validation: " + err.message);
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handleApproveTransaction = async () => {
+        if (!approvalPrompt) return;
+        setIsProcessing(true);
+        try {
+            await apiCall(`/transaction/${approvalPrompt.idTransaksi}/approve`, 'POST');
+            setToast({ message: `Transaksi ${approvalPrompt.idTransaksi} berhasil disetujui (Approved)!`, type: 'success' });
+        } catch (err) {
+            setErrorMsg("Gagal menyetujui transaksi: " + err.message);
+        } finally {
+            setIsProcessing(false);
+            setApprovalPrompt(null);
         }
     };
 
@@ -396,6 +440,18 @@ export default function Makloon() {
                     )}
 
                     {/* TABLE ORDERS */}
+                    <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-bold text-slate-800">Daftar Order Makloon</h4>
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm font-semibold text-slate-600">Filter Tanggal:</label>
+                            <input 
+                                type="date" 
+                                value={dateFilter} 
+                                onChange={(e) => setDateFilter(e.target.value)}
+                                className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                    </div>
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -426,13 +482,19 @@ export default function Makloon() {
                                                     {order.status === 'Pending' && <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[11px] font-black tracking-wider uppercase border border-amber-200">Pending</span>}
                                                     {order.status === 'On-Process' && <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[11px] font-black tracking-wider uppercase border border-b animate-pulse">On Process</span>}
                                                     {order.status === 'Completed' && <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[11px] font-black tracking-wider uppercase border border-slate-200 flex items-center justify-center gap-1 w-max mx-auto"><CheckCircle2 className="w-3 h-3"/> Selesai</span>}
+                                                    {order.status === 'Cancelled' && <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-[11px] font-black tracking-wider uppercase border border-red-200 w-max mx-auto block">Batal</span>}
                                                 </td>
                                                 {can('edit_makloon') && (
                                                     <td className="p-4 text-center">
                                                         {order.status === 'Pending' && (
-                                                            <button disabled={isProcessing} onClick={() => setSendConfirmId(order.id)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-blue-500/20 hover:scale-105 active:scale-95 flex items-center gap-1 mx-auto">
-                                                                Kirim Bahan <ArrowRight className="w-3 h-3"/>
-                                                            </button>
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button disabled={isProcessing} onClick={() => setSendConfirmId(order.id)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-blue-500/20 hover:scale-105 active:scale-95 flex items-center gap-1">
+                                                                    Kirim Bahan <ArrowRight className="w-3 h-3"/>
+                                                                </button>
+                                                                <button disabled={isProcessing} onClick={() => handleCancelOrder(order.id)} className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg text-xs font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1 border border-red-200">
+                                                                    <Trash2 className="w-3 h-3"/> Batal
+                                                                </button>
+                                                            </div>
                                                         )}
                                                         {order.status === 'On-Process' && (
                                                             <button disabled={isProcessing} onClick={() => openReceiveModal(order.id, order.target_qty)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-500/20 hover:scale-105 active:scale-95 flex items-center gap-1 mx-auto">
@@ -538,6 +600,16 @@ export default function Makloon() {
                 message="Yakin ingin mengirim bahan baku ke vendor? Stok bahan baku akan berkurang sesuai resep BOM."
                 confirmText="Ya, Kirim"
                 variant="warning"
+            />
+
+            <ConfirmModal
+                isOpen={!!approvalPrompt}
+                onClose={() => setApprovalPrompt(null)}
+                onConfirm={handleApproveTransaction}
+                title="Approve Transaksi (Opsional)"
+                message={`Transaksi dengan ID ${approvalPrompt?.idTransaksi} telah dibuat sebagai Draft. Apakah Anda ingin langsung menyetujuinya (Approve) sekarang agar tercatat permanen di sistem?`}
+                confirmText="Ya, Approve Sekarang"
+                cancelText="Nanti Saja"
             />
         </div>
     );

@@ -10,12 +10,14 @@ use App\Http\Controllers\MakloonController;
 use App\Http\Controllers\SatuanController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\StockAdjustmentController;
+use App\Http\Controllers\ProjectionController;
 
 // ==========================================
 // AUTH (Public)
 // ==========================================
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/init', [MasterDataController::class, 'getInitialData']);
+Route::get('/projections', [ProjectionController::class, 'getProjections']); // Akses Publik AI
 
 // ==========================================
 // AUTH (Protected) - ALL ROUTES MOVED HERE
@@ -64,6 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/makloon-orders', [MakloonController::class, 'store']);
         Route::post('/makloon-orders/{id}/send', [MakloonController::class, 'send']);
         Route::post('/makloon-orders/{id}/receive', [MakloonController::class, 'receive']);
+        Route::post('/makloon-orders/{id}/cancel', [MakloonController::class, 'cancel']);
     });
 
     // ==========================================
@@ -85,6 +88,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users', [UserController::class, 'store']);
     Route::put('/users/{username}', [UserController::class, 'update']);
     Route::delete('/users/{username}', [UserController::class, 'destroy']);
+
+    // ==========================================
+    // 3.7 API PERMISSIONS (RBAC)
+    // ==========================================
 
     // ==========================================
     // 4. API MASTER DATA UMUM (/{table}) — Permission-guarded

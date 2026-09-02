@@ -17,6 +17,11 @@ class StockAdjustmentController extends Controller
     public function index(Request $request)
     {
         $query = StockAdjustment::with(['item', 'user'])->orderBy('created_at', 'desc');
+        
+        if ($request->has('date') && !empty($request->date)) {
+            $query->whereDate('created_at', $request->date);
+        }
+        
         return response()->json($query->paginate(10));
     }
 
@@ -66,10 +71,12 @@ class StockAdjustmentController extends Controller
                     throw new \Exception("Stok tersedia tidak mencukupi untuk dikurangi. Sisa Tersedia: " . $stokTersedia);
                 }
 
-                $item->decrement('stok', $quantity);
+                // Gunakan DB query builder langsung untuk memastikan stok terupdate secara persisten
+                DB::table('items')->where('kodeBarang', $kodeBarang)->decrement('stok', $quantity);
                 $this->consumeFifoBatches($adjustmentNumber, $kodeBarang, $quantity);
             } else if ($type === 'addition') {
-                $item->increment('stok', $quantity);
+                // Gunakan DB query builder langsung untuk memastikan stok terupdate secara persisten
+                DB::table('items')->where('kodeBarang', $kodeBarang)->increment('stok', $quantity);
 
                 $hargaModal = floatval($item->hargaBeli ?? 0);
                 

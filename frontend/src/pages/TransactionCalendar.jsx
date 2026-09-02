@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, ChevronRight, ChevronDown, Package, ArrowUpFromLine, ArrowDownToLine, Undo, Factory } from '../components/icons/Icons';
 import Modal from '../components/ui/Modal';
 import { getLocalYYYYMMDD } from '../utils/helpers';
@@ -7,12 +7,16 @@ import toast from 'react-hot-toast';
 import useAppStore from '../store/useAppStore';
 
 export default function TransactionCalendar() {
-    const { inbound, outbound, returns, currentUser } = useAppStore();
+    const { currentUser } = useAppStore();
     const isGuest = currentUser?.role === 'guest' || currentUser?.role === 'Guest';
     const today = new Date();
     const [currentMonth, setCurrentMonth] = useState(today.getMonth());
     const [currentYear, setCurrentYear] = useState(today.getFullYear());
     
+    // Lifecycle & Data Fetching
+    const [isLoading, setIsLoading] = useState(true);
+    const [calendarEvents, setCalendarEvents] = useState([]);
+
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
@@ -22,18 +26,51 @@ export default function TransactionCalendar() {
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const [transactionToConfirm, setTransactionToConfirm] = useState(null);
 
-    // Combine all transactions
-    const allTransactions = [
-        ...inbound.map(t => ({ ...t, typeGroup: 'IN', title: `Masuk: ${t.idTransaksi}` })),
-        ...outbound.map(t => ({ ...t, typeGroup: 'OUT', title: `Keluar: ${t.idTransaksi}` })),
-        ...returns.map(t => ({ ...t, typeGroup: 'RET', title: `Return: ${t.idTransaksi}` }))
-    ].filter(t => t.tanggal);
-
     const getDaysInMonth = (month, year) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (month, year) => new Date(year, month, 1).getDay();
 
     const daysInMonth = getDaysInMonth(currentMonth, currentYear);
     const firstDay = getFirstDayOfMonth(currentMonth, currentYear);
+
+    // Auto-Fetch Data based on Month/Year (React Lifecycle Fix)
+    useEffect(() => {
+        const fetchTransactions = async () => {
+            setIsLoading(true);
+            try {
+                const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+                const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+                
+                const res = await apiCall(`/transactions?category=all&start_date=${startDate}&end_date=${endDate}`);
+                
+                const data = res.data || res;
+                const events = (Array.isArray(data) ? data : []).map(t => {
+                    let typeGroup = 'IN';
+                    let title = `Masuk: ${t.idTransaksi}`;
+                    
+                    if (t.idTransaksi.startsWith('INV-OUT') || t.idTransaksi.startsWith('MKL-OUT') || t.type === 'OUT') {
+                        typeGroup = 'OUT';
+                        title = `Keluar: ${t.idTransaksi}`;
+                    } else if (t.idTransaksi.startsWith('RET') || t.type === 'RET') {
+                        typeGroup = 'RET';
+                        title = `Return: ${t.idTransaksi}`;
+                    }
+                    
+                    return { ...t, typeGroup, title };
+                }).filter(t => t.tanggal);
+                
+                setCalendarEvents(events);
+            } catch (error) {
+                console.error("Gagal mengambil data kalender:", error);
+                toast.error("Gagal memuat jadwal operasional.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchTransactions();
+    }, [currentMonth, currentYear, daysInMonth]);
+
+    const allTransactions = calendarEvents;
 
     const prevMonth = () => {
         if (currentMonth === 0) {
@@ -166,8 +203,20 @@ export default function TransactionCalendar() {
                 ))}
             </div>
             
-            <div className="grid grid-cols-7 gap-3">
-                {renderGrid()}
+            <div className="relative min-h-[300px]">
+                {/* 3. Penanganan Loading State (UX Tambahan) */}
+                {isLoading && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-sm rounded-xl">
+                        <div className="flex flex-col items-center">
+                            <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                            <p className="mt-3 text-sm font-bold text-blue-600">Memuat Jadwal...</p>
+                        </div>
+                    </div>
+                )}
+                
+                <div className="grid grid-cols-7 gap-3">
+                    {renderGrid()}
+                </div>
             </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Detail Transaksi - ${selectedDate}`} width="max-w-2xl">

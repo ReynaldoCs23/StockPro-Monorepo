@@ -191,7 +191,7 @@ export default function BarangReturn() {
                 kodeBarang: it.kodeBarang,
                 namaBarang: it.namaBarang,
                 jumlah: it.jumlah,
-                harga_satuan: it.harga_satuan || 0,
+                harga_satuan: jenisReturn === 'pengembalian_galon' ? 0 : (it.harga_satuan || 0),
                 harga_modal_satuan: 0,
                 lokasi_asal: null,
                 lokasi_tujuan: isStockOut ? null : it.lokasi_tujuan,
@@ -558,9 +558,10 @@ export default function BarangReturn() {
                             <select required className="w-full p-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none:border-blue-500:ring-blue-500" value={jenisReturn} onChange={e => { setJenisReturn(e.target.value); setIdReferensi(''); setSelectedItems([]); }}>
                                 <option value="">-- Pilih Jenis --</option>
                                 <option value="RET_IN_RETURN_CUSTOMER">Return Masuk dari Pelanggan</option>
+                                <option value="pengembalian_galon">Pengembalian Aset (Galon Kosong)</option>
                             </select>
                         </div>
-                        {jenisReturn && (
+                        {jenisReturn === 'RET_IN_RETURN_CUSTOMER' && (
                             <div className="col-span-1 md:col-span-2">
                                 <label className="block text-sm font-medium mb-1 text-slate-700">Referensi ID (Wajib: Penjualan Keluar)</label>
                                 <select
@@ -575,6 +576,40 @@ export default function BarangReturn() {
                                     ))}
                                 </select>
                             </div>
+                        )}
+                        {jenisReturn === 'pengembalian_galon' && (
+                            <>
+                                <div className="col-span-1 md:col-span-2">
+                                    <label className="block text-sm font-medium mb-1 text-slate-700">Pilih Pelanggan / Entitas</label>
+                                    <select required className="w-full p-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none" value={refEntity} onChange={e => setRefEntity(e.target.value)}>
+                                        <option value="">Pilih Pelanggan...</option>
+                                        {customers.map(c => <option key={c.idPelanggan} value={c.nama}>{c.nama}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-span-1 md:col-span-2 border border-slate-200 p-4 rounded-xl mt-2 bg-white">
+                                    <label className="block text-sm font-medium mb-2 text-slate-700">Tambah Barang Kembalian</label>
+                                    <select className="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:ring-2 focus:ring-emerald-500 outline-none" value="" onChange={e => {
+                                        const kodeBarang = e.target.value;
+                                        if (!kodeBarang) return;
+                                        const itemMaster = items.find(i => i.kodeBarang === kodeBarang);
+                                        if (selectedItems.some(it => it.kodeBarang === kodeBarang)) return;
+                                        setSelectedItems(prev => [...prev, {
+                                            kodeBarang,
+                                            namaBarang: itemMaster?.nama || kodeBarang,
+                                            maxQty: 99999,
+                                            jumlah: 1,
+                                            selected: true,
+                                            lokasi_tujuan: '',
+                                            harga_satuan: 0
+                                        }]);
+                                    }}>
+                                        <option value="">+ Pilih Barang (Galon)...</option>
+                                        {items.map(i => (
+                                            <option key={i.kodeBarang} value={i.kodeBarang}>{i.kodeBarang} - {i.nama}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </>
                         )}
                         <div className="col-span-1">
                             <label className="block text-sm font-medium mb-1 text-slate-700">Tanggal</label>
@@ -613,7 +648,7 @@ export default function BarangReturn() {
                                                 <option key={l.idLokasi} value={l.idLokasi}>{l.nama}</option>
                                             ))}
                                         </select>
-                                        {jenisReturn === 'RET_IN_RETURN_CUSTOMER' ? (
+                                        {jenisReturn === 'RET_IN_RETURN_CUSTOMER' || jenisReturn === 'pengembalian_galon' ? (
                                             <input type="number" min="0" max={it.maxQty} className="w-24 p-2 border border-slate-300 rounded-lg text-sm text-center font-bold outline-none focus:ring-1 focus:ring-emerald-500:border-blue-500:ring-blue-500" value={it.jumlah} onChange={e => updateQty(idx, e.target.value)} />
                                         ) : (
                                             <span className="font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-lg text-sm">+{it.jumlah}</span>
