@@ -45,3 +45,6 @@ export const Loader2 = createIcon(<React.Fragment><path d="M21 12a9 9 0 1 1-6.21
 export const ArrowRight = createIcon(<React.Fragment><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></React.Fragment>);
 export const Sun = createIcon(<React.Fragment><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></React.Fragment>);
 export const Moon = createIcon(<React.Fragment><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></React.Fragment>);
+export const Sparkles = createIcon(<React.Fragment><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></React.Fragment>);
+export const Send = createIcon(<React.Fragment><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></React.Fragment>);
+export const MessageSquare = createIcon(<React.Fragment><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></React.Fragment>);

@@ -11,6 +11,7 @@ use App\Http\Controllers\SatuanController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\ProjectionController;
+use App\Http\Controllers\AIChatController;
 
 // ==========================================
 // AUTH (Public)
@@ -30,6 +31,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // 1. INIT & DASHBOARD
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/item-batches/available', [TransactionController::class, 'availableBatches']);
+    
+    // AI Chat Endpoint
+    Route::post('/ask-ai', [AIChatController::class, 'ask']);
 
     // ==========================================
     // 1.5 COMPANY PROFILE & TRANSACTIONS

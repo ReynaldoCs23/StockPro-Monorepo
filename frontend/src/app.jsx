@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from
 import { apiCall } from './utils/api';
 import { getLocalYYYYMMDD } from './utils/helpers';
 import logoImg from '/Images/LogoStockPro.png';
-import { LayoutDashboard, Package, Tags, ArrowDownToLine, ArrowUpFromLine, Undo, Users, Briefcase, Factory, MapPin, ClipboardList, LogOut, Menu, Truck, Search, Bell, Calendar, ChevronDown, ChevronRight, UserCircle } from './components/icons/Icons.jsx';
+import { LayoutDashboard, Package, Tags, ArrowDownToLine, ArrowUpFromLine, Undo, Users, Briefcase, Factory, MapPin, ClipboardList, LogOut, Menu, Truck, Search, Bell, Calendar, ChevronDown, ChevronRight, UserCircle, MessageSquare } from './components/icons/Icons.jsx';
 import { echo } from './utils/echo';
 
 // Import Zustand Store
@@ -48,6 +48,8 @@ import Notifikasi from './pages/Notifikasi';
 import SemuaAktivitas from './pages/SemuaAktivitas';
 import TransactionCalendar from './pages/TransactionCalendar';
 import StockAdjustment from './pages/StockAdjustment';
+import AIAssistant from './pages/AIAssistant';
+import FloatingAIChat from './components/FloatingAIChat';
 
 function MainApp() {
     const todayString = getLocalYYYYMMDD();
@@ -188,6 +190,7 @@ function MainApp() {
     // --- NAVIGATION STRUCTURE ---
     const navItems = [
         { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
+        { id: 'ai-assistant', path: '/ai-assistant', label: 'AI Assistant', icon: MessageSquare, permission: 'view_dashboard' },
         { id: 'calendar', path: '/calendar', label: 'Kalender Transaksi', icon: Calendar, permission: 'view_dashboard' },
         { 
             id: 'inventory', label: 'Inventory', icon: Package, isDropdown: true,
@@ -432,6 +435,7 @@ function MainApp() {
                             <Route path="/" element={<Navigate to="/dashboard" replace />} />
                             
                             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                            <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
                             <Route path="/notifikasi" element={<ProtectedRoute><Notifikasi /></ProtectedRoute>} />
                             <Route path="/semua-aktivitas" element={<ProtectedRoute><SemuaAktivitas /></ProtectedRoute>} />
                             
@@ -537,6 +541,9 @@ function MainApp() {
                     </div>
                 </div>
             )}
+            
+            {/* Global Floating AI Chat Widget */}
+            <FloatingAIChat />
         </div>
     );
 }
