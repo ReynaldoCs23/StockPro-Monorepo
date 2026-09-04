@@ -17,7 +17,11 @@ export default function StockAdjustment() {
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [dateFilter, setDateFilter] = useState(getLocalYYYYMMDD());
+    
+    const todayDate = new Date();
+    const todayString = getLocalYYYYMMDD(todayDate);
+    const [startDate, setStartDate] = useState(todayString);
+    const [endDate, setEndDate] = useState(todayString);
     
     const [isModalOpen, setModalOpen] = useState(false);
     const [toast, setToast] = useState(null);
@@ -32,7 +36,7 @@ export default function StockAdjustment() {
     const fetchAdjustments = () => {
         if (!isApiOffline) {
             setIsProcessing(true);
-            const query = dateFilter ? `?page=${currentPage}&date=${dateFilter}` : `?page=${currentPage}`;
+            const query = (startDate && endDate) ? `?page=${currentPage}&start_date=${startDate}&end_date=${endDate}` : `?page=${currentPage}`;
             apiCall(`/stock-adjustments${query}`)
                 .then(data => {
                     if (data && data.data) {
@@ -50,7 +54,7 @@ export default function StockAdjustment() {
 
     useEffect(() => {
         fetchAdjustments();
-    }, [currentPage, isApiOffline, dateFilter]);
+    }, [currentPage, isApiOffline, startDate, endDate]);
 
     const openAddModal = () => {
         setFormData({
@@ -142,15 +146,15 @@ export default function StockAdjustment() {
             <div className="flex justify-end mb-2">
                 <div className="flex items-center bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
                     <Calendar className="w-4 h-4 text-slate-400 mr-2" />
-                    <input 
-                        type="date" 
-                        value={dateFilter} 
-                        onChange={(e) => {
-                            setCurrentPage(1);
-                            setDateFilter(e.target.value);
-                        }}
-                        className="text-[13px] outline-none font-semibold text-slate-700 bg-transparent cursor-pointer" 
-                    />
+                    <input type="date" max={endDate} value={startDate} onChange={e => {
+                        setCurrentPage(1);
+                        setStartDate(e.target.value);
+                    }} className="text-[13px] outline-none font-semibold text-slate-700 bg-transparent cursor-pointer" />
+                    <span className="text-slate-300 font-bold mx-2">-</span>
+                    <input type="date" min={startDate} value={endDate} onChange={e => {
+                        setCurrentPage(1);
+                        setEndDate(e.target.value);
+                    }} className="text-[13px] outline-none font-semibold text-slate-700 bg-transparent cursor-pointer" />
                 </div>
             </div>
 

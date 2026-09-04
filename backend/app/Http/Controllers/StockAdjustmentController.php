@@ -18,8 +18,11 @@ class StockAdjustmentController extends Controller
     {
         $query = StockAdjustment::with(['item', 'user'])->orderBy('created_at', 'desc');
         
-        if ($request->has('date') && !empty($request->date)) {
-            $query->whereDate('created_at', $request->date);
+        if ($request->has('start_date') && $request->has('end_date')) {
+            $query->whereBetween('created_at', [
+                $request->start_date . ' 00:00:00', 
+                $request->end_date . ' 23:59:59'
+            ]);
         }
         
         return response()->json($query->paginate(10));

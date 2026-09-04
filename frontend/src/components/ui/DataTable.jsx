@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 
 export default function DataTable({ 
     title, data, columns, onAdd, onEdit, onDelete, onPrint, idKey, filename, customFilter, hideActions,
-    currentPage, lastPage, onPageChange, extraActions
+    currentPage, lastPage, onPageChange, extraActions, onPrintLaporan
 }) {
     const [search, setSearch] = useState('');
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -70,7 +70,7 @@ export default function DataTable({
                         <input type="text" placeholder="Cari data..." className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={search} onChange={e => setSearch(e.target.value)} />
                     </div>
                     <button onClick={handleExportCSV} className="p-2.5 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 border border-slate-200 rounded-xl transition-colors" title="Export CSV"><FileSpreadsheet className="w-4 h-4" /></button>
-                    <button onClick={() => window.print()} className="p-2.5 text-slate-600 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 rounded-xl transition-colors" title="Print Laporan"><FileText className="w-4 h-4" /></button>
+                    <button onClick={onPrintLaporan || (() => window.print())} className="p-2.5 text-slate-600 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 rounded-xl transition-colors" title="Print Laporan"><FileText className="w-4 h-4" /></button>
                     {customFilter && customFilter}
                     {onAdd && <button onClick={onAdd} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700"><Plus className="w-4 h-4" /> Tambah</button>}
                 </div>

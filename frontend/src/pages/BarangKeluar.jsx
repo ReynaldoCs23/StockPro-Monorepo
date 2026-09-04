@@ -39,6 +39,7 @@ export default function BarangKeluar() {
     const [filterType, setFilterType] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
+    const [globalSummary, setGlobalSummary] = useState({ total_transactions: 0, total_qty: 0 });
 
     // Header Data
     const [formData, setFormData] = useState({ tanggal: todayString, tujuan: 'Penjualan ke Customer', namaPembeli: '', keterangan: '' });
@@ -71,6 +72,9 @@ export default function BarangKeluar() {
                     if (data && data.data) {
                         setOutbound(Array.isArray(data.data) ? data.data : (data.data.data || []));
                         setLastPage(data.last_page || 1);
+                        if (data.summary) {
+                            setGlobalSummary(data.summary);
+                        }
                     } else {
                         setOutbound(Array.isArray(data) ? data : []);
                         setLastPage(1);
@@ -301,6 +305,40 @@ export default function BarangKeluar() {
         { key: 'totalTransaksi', label: 'Total Nilai', format: v => formatRp(v || 0), exportFormat: v => formatRp(v || 0) }
     ];
 
+    const [fullPrintData, setFullPrintData] = useState(null);
+
+    useEffect(() => {
+        if (fullPrintData && fullPrintData.length > 0) {
+            const timer = setTimeout(() => {
+                window.print();
+                setFullPrintData(null);
+            }, 600);
+            return () => clearTimeout(timer);
+        }
+    }, [fullPrintData]);
+
+    const handlePrintLaporan = async () => {
+        setIsProcessing(true);
+        const safeStart = getLocalYYYYMMDD(new Date(filterStart));
+        const safeEnd = getLocalYYYYMMDD(new Date(filterEnd));
+        try {
+            const resp = await apiCall(`/transactions?category=outbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
+            console.log('[PrintLaporan] API response:', resp);
+            console.log('[PrintLaporan] resp.data length:', resp?.data?.length);
+            const allData = Array.isArray(resp?.data) ? resp.data : [];
+            console.log('[PrintLaporan] allData length:', allData.length);
+            if (allData.length === 0) {
+                setToast({ message: "Tidak ada data untuk dicetak.", type: "error" });
+            } else {
+                setFullPrintData(allData);
+            }
+        } catch (e) {
+            console.error('[PrintLaporan] Error:', e);
+            setToast({ message: "Gagal mengambil data laporan: " + e.message, type: "error" });
+        }
+        setIsProcessing(false);
+    };
+
     const isPrintingRow = !!printData;
 
     return (
@@ -324,12 +362,13 @@ export default function BarangKeluar() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                    <StatCardMini title="Total Transaksi Keluar" value={completedOutbound.length} icon={ArrowUpFromLine} bgClass="bg-rose-50" colorClass="text-rose-600" />
-                    <StatCardMini title="Total Qty Keluar" value={completedOutbound.reduce((a, b) => a + Number(b.jumlah || 0), 0)} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
+                    <StatCardMini title="Total Transaksi Keluar" value={globalSummary.total_transactions} icon={ArrowUpFromLine} bgClass="bg-rose-50" colorClass="text-rose-600" />
+                    <StatCardMini title="Total Qty Keluar" value={globalSummary.total_qty} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
                 </div>
 
                 <DataTable
                     title="Barang Keluar" filename="Barang_Keluar" data={filteredOutbound}
+                    onPrintLaporan={handlePrintLaporan}
                     customFilter={
                         <div className="relative mr-2 w-full md:w-auto">
                             <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
@@ -365,7 +404,7 @@ export default function BarangKeluar() {
                 />
             </div>
             
-            {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Keluar" type="transaction" data={filteredOutbound} columns={reportColumns} />}
+            {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Keluar" type="transaction" data={fullPrintData || filteredOutbound} columns={reportColumns} />}
 
             <ConfirmModal
                 isOpen={!!confirmAction}

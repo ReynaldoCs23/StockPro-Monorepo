@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from
 import { apiCall } from './utils/api';
 import { getLocalYYYYMMDD } from './utils/helpers';
 import logoImg from '/Images/LogoStockPro.png';
-import { LayoutDashboard, Package, Tags, ArrowDownToLine, ArrowUpFromLine, Undo, Users, Briefcase, Factory, MapPin, ClipboardList, LogOut, Menu, Truck, Search, Bell, Calendar, ChevronDown, ChevronRight, UserCircle, MessageSquare } from './components/icons/Icons.jsx';
+import { LayoutDashboard, Package, Tags, ArrowDownToLine, ArrowUpFromLine, Undo, Users, Briefcase, Factory, MapPin, ClipboardList, LogOut, Menu, Truck, Search, Bell, Calendar, ChevronDown, ChevronRight, UserCircle, MessageSquare, FileText } from './components/icons/Icons.jsx';
 import { echo } from './utils/echo';
 
 // Import Zustand Store
@@ -49,6 +49,7 @@ import SemuaAktivitas from './pages/SemuaAktivitas';
 import TransactionCalendar from './pages/TransactionCalendar';
 import StockAdjustment from './pages/StockAdjustment';
 import AIAssistant from './pages/AIAssistant';
+import LaporanMutasi from './pages/LaporanMutasi';
 import FloatingAIChat from './components/FloatingAIChat';
 
 function MainApp() {
@@ -214,6 +215,7 @@ function MainApp() {
                 ...(isAdminOrSuperadmin ? [{ id: 'user', path: '/master/user', label: 'Manajemen User', icon: UserCircle }] : [])
             ]
         },
+        { id: 'laporan-mutasi', path: '/laporan/mutasi', label: 'Laporan Mutasi', icon: FileText, permission: 'view_dashboard' },
         ...(isAdminOrSuperadmin ? [
             { id: 'logs', path: '/logs', label: 'System Logs', icon: ClipboardList }
         ] : [])
@@ -452,6 +454,7 @@ function MainApp() {
                             <Route path="/inventory/adjustment" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
                             <Route path="/inventory/makloon" element={<ProtectedRoute><Makloon /></ProtectedRoute>} />
                             <Route path="/calendar" element={<ProtectedRoute><TransactionCalendar /></ProtectedRoute>} />
+                            <Route path="/laporan/mutasi" element={<ProtectedRoute><LaporanMutasi /></ProtectedRoute>} />
                             
                             {isAdminOrSuperadmin && <Route path="/master/user" element={<ProtectedRoute><User /></ProtectedRoute>} />}
                             {isAdminOrSuperadmin && <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />}

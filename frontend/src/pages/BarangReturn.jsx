@@ -33,6 +33,7 @@ export default function BarangReturn() {
     const [recentOutbound, setRecentOutbound] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
+    const [globalSummary, setGlobalSummary] = useState({ total_transactions: 0, total_qty: 0, ret_out_count: 0, ret_in_count: 0 });
 
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
     // --- FLOW STATE ---
@@ -84,6 +85,9 @@ export default function BarangReturn() {
                     if (data && data.data) {
                         setReturns(data.data);
                         setLastPage(data.last_page || 1);
+                        if (data.summary) {
+                            setGlobalSummary(data.summary);
+                        }
                     } else {
                         setReturns(Array.isArray(data) ? data : []);
                         setLastPage(1);
@@ -94,9 +98,7 @@ export default function BarangReturn() {
         }
     }, [filterType, startDate, endDate, currentPage]);
 
-    const totalQtyReturn = filteredReturns.reduce((a, b) => a + Number(b.jumlah || 0), 0);
-    const retOutCount = filteredReturns.filter(r => (r.sumber_tujuan || r.jenisReturn || '').startsWith('RET_OUT')).length;
-    const retInCount = filteredReturns.filter(r => (r.sumber_tujuan || r.jenisReturn || '').startsWith('RET_IN')).length;
+    // Count logic moved to use globalSummary
 
     // --- Open Modal ---
     const openModal = (flow) => {
@@ -332,6 +334,36 @@ export default function BarangReturn() {
         { key: 'totalTransaksi', label: 'Total Nilai', format: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0), exportFormat: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0) }
     ];
 
+    const [fullPrintData, setFullPrintData] = useState(null);
+
+    React.useEffect(() => {
+        if (fullPrintData && fullPrintData.length > 0) {
+            const timer = setTimeout(() => {
+                window.print();
+                setFullPrintData(null);
+            }, 600);
+            return () => clearTimeout(timer);
+        }
+    }, [fullPrintData]);
+
+    const handlePrintLaporan = async () => {
+        setIsProcessing(true);
+        const safeStart = getLocalYYYYMMDD(new Date(startDate));
+        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        try {
+            const resp = await apiCall(`/transactions?category=return&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
+            const allData = Array.isArray(resp?.data) ? resp.data : [];
+            if (allData.length === 0) {
+                setToast({ message: "Tidak ada data untuk dicetak.", type: "error" });
+            } else {
+                setFullPrintData(allData);
+            }
+        } catch (e) {
+            setToast({ message: "Gagal mengambil data laporan: " + e.message, type: "error" });
+        }
+        setIsProcessing(false);
+    };
+
     const isPrintingRow = !!printData;
 
     return (
@@ -352,10 +384,10 @@ export default function BarangReturn() {
 
                 {/* Metric Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <StatCardMini title="Total Transaksi" value={filteredReturns.length} icon={Undo} bgClass="bg-violet-50" colorClass="text-violet-600" />
-                    <StatCardMini title="Total Qty Return" value={totalQtyReturn} icon={Package} bgClass="bg-sky-50" colorClass="text-sky-600" />
-                    <StatCardMini title="Return Keluar" value={retOutCount} icon={ArrowUpFromLine} bgClass="bg-rose-50" colorClass="text-rose-600" />
-                    <StatCardMini title="Return Masuk" value={retInCount} icon={ArrowDownToLine} bgClass="bg-emerald-50" colorClass="text-emerald-600" />
+                    <StatCardMini title="Total Transaksi" value={globalSummary.total_transactions} icon={Undo} bgClass="bg-violet-50" colorClass="text-violet-600" />
+                    <StatCardMini title="Total Qty Return" value={globalSummary.total_qty} icon={Package} bgClass="bg-sky-50" colorClass="text-sky-600" />
+                    <StatCardMini title="Return Keluar" value={globalSummary.ret_out_count} icon={ArrowUpFromLine} bgClass="bg-rose-50" colorClass="text-rose-600" />
+                    <StatCardMini title="Return Masuk" value={globalSummary.ret_in_count} icon={ArrowDownToLine} bgClass="bg-emerald-50" colorClass="text-emerald-600" />
                 </div>
 
                 {/* Data Table - Unified with DataTable component */}
@@ -366,6 +398,7 @@ export default function BarangReturn() {
                     filename="Barang_Return"
                     onDelete={can('delete_barang_return') ? handleDelete : null}
                     onPrint={(row) => setPrintData(row)}
+                    onPrintLaporan={handlePrintLaporan}
                     currentPage={currentPage}
                     lastPage={lastPage}
                     onPageChange={setCurrentPage}
@@ -389,7 +422,7 @@ export default function BarangReturn() {
                 />
             </div>
 
-            {!isPrintingRow && <ReportPrintTemplate title="Laporan Transaksi Barang Return" type="transaction" data={filteredReturns} columns={returnColumns} />}
+            {!isPrintingRow && <ReportPrintTemplate title="Laporan Transaksi Barang Return" type="transaction" data={fullPrintData || filteredReturns} columns={returnColumns} />}
 
             {/* Detail Modal */}
             <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={`Detail Transaksi: ${detailData?.idTransaksi}`} width="max-w-3xl">

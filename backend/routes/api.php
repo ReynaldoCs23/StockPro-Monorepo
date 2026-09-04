@@ -12,6 +12,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\ProjectionController;
 use App\Http\Controllers\AIChatController;
+use App\Http\Controllers\ReportController;
 
 // ==========================================
 // AUTH (Public)
@@ -38,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ==========================================
     // 1.5 COMPANY PROFILE & TRANSACTIONS
     // ==========================================
+    Route::get('/reports/mutasi', [ReportController::class, 'getMutasiReport']);
     Route::get('/company-profile', [\App\Http\Controllers\CompanyProfileController::class, 'show']);
     Route::post('/company-profile', [\App\Http\Controllers\CompanyProfileController::class, 'update']);
     Route::get('/transactions', [TransactionController::class, 'index']);

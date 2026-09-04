@@ -25,6 +25,7 @@ export default function BarangMasuk() {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
+    const [globalSummary, setGlobalSummary] = useState({ total_transactions: 0, total_qty: 0 });
 
     const [isModalOpen, setModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -65,6 +66,9 @@ export default function BarangMasuk() {
                 if (data && data.data) {
                     setInbound(data.data);
                     setLastPage(data.last_page || 1);
+                    if (data.summary) {
+                        setGlobalSummary(data.summary);
+                    }
                 } else {
                     setInbound(Array.isArray(data) ? data : []);
                     setLastPage(1);
@@ -96,7 +100,7 @@ export default function BarangMasuk() {
     })();
 
     const completedInbound = filteredInbound.filter(t => t.status === 'completed' || t.status === 'COMPLETED');
-    const totalQtyMasuk = completedInbound.reduce((a, b) => a + Number(b.jumlah || 0), 0);
+    // totalQtyMasuk logic moved to use globalSummary
 
     const openAddModal = () => {
         setEditId(null);
@@ -298,6 +302,36 @@ export default function BarangMasuk() {
         { key: 'totalTransaksi', label: 'Total Nilai', format: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0), exportFormat: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0) }
     ];
 
+    const [fullPrintData, setFullPrintData] = useState(null);
+
+    useEffect(() => {
+        if (fullPrintData && fullPrintData.length > 0) {
+            const timer = setTimeout(() => {
+                window.print();
+                setFullPrintData(null);
+            }, 600);
+            return () => clearTimeout(timer);
+        }
+    }, [fullPrintData]);
+
+    const handlePrintLaporan = async () => {
+        setIsProcessing(true);
+        const safeStart = getLocalYYYYMMDD(new Date(startDate));
+        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        try {
+            const resp = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
+            const allData = Array.isArray(resp?.data) ? resp.data : [];
+            if (allData.length === 0) {
+                setToast({ message: "Tidak ada data untuk dicetak.", type: "error" });
+            } else {
+                setFullPrintData(allData);
+            }
+        } catch (e) {
+            setToast({ message: "Gagal mengambil data laporan: " + e.message, type: "error" });
+        }
+        setIsProcessing(false);
+    };
+
     const isPrintingRow = !!printData;
 
     return (
@@ -316,11 +350,12 @@ export default function BarangMasuk() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                    <StatCardMini title="Total Transaksi Masuk" value={completedInbound.length} icon={ArrowDownToLine} bgClass="bg-emerald-50" colorClass="text-emerald-600" />
-                    <StatCardMini title="Total Qty Masuk" value={totalQtyMasuk} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
+                    <StatCardMini title="Total Transaksi Masuk" value={globalSummary.total_transactions} icon={ArrowDownToLine} bgClass="bg-emerald-50" colorClass="text-emerald-600" />
+                    <StatCardMini title="Total Qty Masuk" value={globalSummary.total_qty} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
                 </div>
 
                 <DataTable title="Barang Masuk" data={filteredInbound} idKey="idTransaksi" filename="Barang_Masuk"
+                    onPrintLaporan={handlePrintLaporan}
                     customFilter={
                         <div className="relative mr-2 w-full md:w-auto">
                             <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
@@ -353,7 +388,7 @@ export default function BarangMasuk() {
                 />
             </div>
             
-            {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Masuk" type="transaction" data={filteredInbound} columns={reportColumns} />}
+            {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Masuk" type="transaction" data={fullPrintData || filteredInbound} columns={reportColumns} />}
 
             <ConfirmModal
                 isOpen={!!confirmAction}

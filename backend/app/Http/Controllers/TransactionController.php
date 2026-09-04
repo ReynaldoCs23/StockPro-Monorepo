@@ -107,8 +107,19 @@ class TransactionController extends Controller {
         }
 
         $companyProfile = \App\Models\CompanyProfile::first();
-
-        $paginator = $query->paginate(10);
+        
+        $baseQuery = clone $query;
+        
+        $perPage = $request->query('per_page', 10);
+        if ($perPage === 'all') {
+            $countQuery = clone $query;
+            $totalCount = $countQuery->count();
+            $perPage = $totalCount > 0 ? $totalCount : 1;
+        } else {
+            $perPage = (int) $perPage;
+        }
+        
+        $paginator = $query->paginate($perPage);
         
         // --- BULK LOAD DATA TO PREVENT N+1 QUERY PROBLEM ---
         $transactionIds = collect($paginator->items())->pluck('idTransaksi')->toArray();
@@ -258,7 +269,24 @@ class TransactionController extends Controller {
             return [...(array)$t, 'items' => $items, 'isi_transaksi_detail' => $isi_transaksi_detail, 'company_profile' => $companyProfile];
         });
 
-        return response()->json($paginator);
+        $response = $paginator->toArray();
+
+        // Calculate global summary for frontend cards (across all pages) using the un-paginated base query
+        $globalStats = DB::query()->fromSub($baseQuery, 'sub')->select(
+            DB::raw('COUNT(*) as total_transactions'),
+            DB::raw('SUM(jumlah) as total_qty'),
+            DB::raw('SUM(CASE WHEN sumber_tujuan LIKE "RET_OUT%" OR idTransaksi LIKE "RET-OUT%" OR sumber_tujuan = "Return ke Vendor" THEN 1 ELSE 0 END) as ret_out_count'),
+            DB::raw('SUM(CASE WHEN sumber_tujuan LIKE "RET_IN%" OR idTransaksi LIKE "RET-IN%" OR sumber_tujuan = "Return dari Customer" THEN 1 ELSE 0 END) as ret_in_count')
+        )->first();
+
+        $response['summary'] = [
+            'total_transactions' => $globalStats->total_transactions ?? 0,
+            'total_qty' => $globalStats->total_qty ?? 0,
+            'ret_out_count' => $globalStats->ret_out_count ?? 0,
+            'ret_in_count' => $globalStats->ret_in_count ?? 0
+        ];
+
+        return response()->json($response);
     }
 
     public function makloonReferences()
