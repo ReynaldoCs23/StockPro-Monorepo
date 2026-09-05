@@ -13,8 +13,9 @@ import { formatRp, getDaysArray } from '../utils/helpers';
 import { apiCall } from '../utils/api';
 
 export default function Dashboard() {
-    const { items, inbound, outbound, returns, users, currentUser } = useAppStore();
+    const { items, inbound, outbound, returns, users, currentUser, currentUserPermissions = [] } = useAppStore();
     const isAdminOrSuperadmin = currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Superadmin');
+    const canViewForecasting = isAdminOrSuperadmin || currentUserPermissions.includes('view_ai_forecasting');
     const navigate = useNavigate();
     const getLocalYYYYMMDD = (d) => {
         const offset = d.getTimezoneOffset() * 60000;
@@ -337,9 +338,11 @@ export default function Dashboard() {
             </div>
 
             {/* === NEW ROW: AI Projections === */}
-            <div className="grid grid-cols-1 mb-6">
-                <ProjectionDashboard />
-            </div>
+            {canViewForecasting && (
+                <div className="grid grid-cols-1 mb-6">
+                    <ProjectionDashboard />
+                </div>
+            )}
 
             {/* === NEW ROW: Donut Chart + VIP Customers + Inventory Turnover === */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

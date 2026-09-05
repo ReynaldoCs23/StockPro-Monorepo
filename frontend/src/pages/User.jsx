@@ -134,6 +134,8 @@ export default function User() {
         supplier: ['view', 'create', 'edit', 'delete'],
         pelanggan: ['view', 'create', 'edit', 'delete'],
         laporan: ['view'],
+        ai_assistant: ['view'],
+        ai_forecasting: ['view'],
     };
 
     // Use API data if available, otherwise use fallback

@@ -27,6 +27,8 @@ class PermissionSeeder extends Seeder
             'pelanggan'      => ['view', 'create', 'edit', 'delete'],
             'laporan'        => ['view'],
             'manajemen_user' => ['view', 'create', 'edit', 'delete'],
+            'ai_assistant'   => ['view'],
+            'ai_forecasting' => ['view'],
         ];
 
         foreach ($modules as $module => $actions) {
@@ -48,6 +50,8 @@ class PermissionSeeder extends Seeder
         // Karyawan gets full CRUD on operational modules
         $karyawan->syncPermissions([
             'view_dashboard',
+            'view_ai_assistant',
+            'view_ai_forecasting',
             'view_barang_masuk', 'create_barang_masuk', 'edit_barang_masuk', 'delete_barang_masuk',
             'view_barang_keluar', 'create_barang_keluar', 'edit_barang_keluar', 'delete_barang_keluar',
             'view_barang_return', 'create_barang_return', 'edit_barang_return', 'delete_barang_return',

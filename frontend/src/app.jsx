@@ -191,7 +191,7 @@ function MainApp() {
     // --- NAVIGATION STRUCTURE ---
     const navItems = [
         { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
-        { id: 'ai-assistant', path: '/ai-assistant', label: 'AI Assistant', icon: MessageSquare, permission: 'view_dashboard' },
+        { id: 'ai-assistant', path: '/ai-assistant', label: 'AI Assistant', icon: MessageSquare, permission: 'view_ai_assistant' },
         { id: 'calendar', path: '/calendar', label: 'Kalender Transaksi', icon: Calendar, permission: 'view_dashboard' },
         { 
             id: 'inventory', label: 'Inventory', icon: Package, isDropdown: true,

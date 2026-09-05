@@ -1,0 +1,29 @@
+# =======================================================
+# PANDUAN INSTALASI STOCKPRO ERP MONOREPO (FULL STACK)
+# =======================================================
+#
+# 1. BACKEND (Laravel / PHP)
+#    - Masuk ke folder: cd ../backend
+#    - Jalankan: composer install
+#    - Sesuaikan .env lalu jalankan: php artisan migrate --seed
+#
+# 2. FRONTEND (React / Vite)
+#    - Masuk ke folder: cd ../frontend
+#    - Jalankan: npm install
+#
+# 3. AI ENGINE (Python - Folder Saat Ini)
+#    - Pastikan berada di folder: ai-engine
+#    - (Opsional) Buat virtual env: python -m venv venv
+#    - Jalankan perintah di bawah ini untuk menginstal module:
+#      pip install -r requirements.txt
+#
+# =======================================================
+# DEPENDENSI AI ENGINE
+# =======================================================
+
+Flask
+pandas
+SQLAlchemy
+PyMySQL
+statsmodels
+google-generativeai
