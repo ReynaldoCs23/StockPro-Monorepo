@@ -199,7 +199,7 @@ function MainApp() {
                 { id: 'masuk', path: '/inventory/masuk', label: 'Barang Masuk', icon: ArrowDownToLine, permission: 'view_barang_masuk' },
                 { id: 'keluar', path: '/inventory/keluar', label: 'Barang Keluar', icon: ArrowUpFromLine, permission: 'view_barang_keluar' },
                 { id: 'return', path: '/inventory/return', label: 'Barang Return', icon: Undo, permission: 'view_barang_return' },
-                { id: 'adjustment', path: '/inventory/adjustment', label: 'Penyesuaian Stok', icon: ClipboardList, permission: 'view_barang_masuk' },
+                { id: 'adjustment', path: '/inventory/adjustment', label: 'Penyesuaian Stok', icon: ClipboardList, permission: 'view_penyesuaian_stok' },
                 { id: 'makloon', path: '/inventory/makloon', label: 'Makloon', icon: Factory, permission: 'view_makloon' },
             ]
         },
@@ -215,7 +215,7 @@ function MainApp() {
                 ...(isAdminOrSuperadmin ? [{ id: 'user', path: '/master/user', label: 'Manajemen User', icon: UserCircle }] : [])
             ]
         },
-        { id: 'laporan-mutasi', path: '/laporan/mutasi', label: 'Laporan Mutasi', icon: FileText, permission: 'view_dashboard' },
+        { id: 'laporan-mutasi', path: '/laporan/mutasi', label: 'Laporan Mutasi', icon: FileText, permission: 'view_laporan' },
         ...(isAdminOrSuperadmin ? [
             { id: 'logs', path: '/logs', label: 'System Logs', icon: ClipboardList }
         ] : [])

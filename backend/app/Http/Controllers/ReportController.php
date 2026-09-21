@@ -16,9 +16,9 @@ class ReportController extends Controller
         $cleanStart = Carbon::parse($startFilter)->startOfDay()->format('Y-m-d H:i:s');
         $cleanEnd = Carbon::parse($endFilter)->endOfDay()->format('Y-m-d H:i:s');
 
-        // Base query for transactions
+        // Base query — grouping dilakukan 100% di MySQL, bukan di PHP (hemat RAM)
         $baseQuery = function($types) use ($cleanStart, $cleanEnd) {
-            $data = DB::table('transaction_details')
+            return DB::table('transaction_details')
                 ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
                 ->whereIn('transactions.type', $types)
                 ->where('transactions.status', 'completed')
@@ -28,53 +28,24 @@ class ReportController extends Controller
                     'transactions.tanggal',
                     'transactions.entitas',
                     'transactions.sumber_tujuan',
-                    'transaction_details.namaBarang',
-                    'transaction_details.jumlah as qty',
-                    'transaction_details.harga_satuan',
+                    'transactions.totalTransaksi as total_nilai',
+                    'transactions.keterangan',
+                    DB::raw('SUM(transaction_details.jumlah) as qty'),
+                    DB::raw('COUNT(transaction_details.id) as item_count'),
+                    DB::raw('CASE WHEN COUNT(transaction_details.id) = 1 THEN MAX(transaction_details.namaBarang) ELSE CONCAT(COUNT(transaction_details.id), " Jenis Barang") END as namaBarang'),
+                    DB::raw('CASE WHEN COUNT(transaction_details.id) = 1 THEN MAX(transaction_details.harga_satuan) ELSE NULL END as harga_satuan')
+                )
+                ->groupBy(
+                    'transactions.idTransaksi',
+                    'transactions.tanggal',
+                    'transactions.entitas',
+                    'transactions.sumber_tujuan',
                     'transactions.totalTransaksi',
                     'transactions.keterangan'
                 )
                 ->orderBy('transactions.tanggal', 'asc')
-                ->get();
-
-            $grouped = [];
-            foreach ($data as $row) {
-                $id = $row->idTransaksi;
-                if (!isset($grouped[$id])) {
-                    $grouped[$id] = [
-                        'idTransaksi' => $row->idTransaksi,
-                        'tanggal' => $row->tanggal,
-                        'entitas' => $row->entitas,
-                        'sumber_tujuan' => $row->sumber_tujuan,
-                        'keterangan' => $row->keterangan,
-                        'items' => [],
-                        'qty' => 0,
-                        'total_nilai' => (float)$row->totalTransaksi, // Use totalTransaksi from table
-                        'harga_satuan' => $row->harga_satuan, // store first item's price
-                    ];
-                }
-                $grouped[$id]['items'][] = $row->namaBarang;
-                $grouped[$id]['qty'] += $row->qty;
-            }
-
-            $result = [];
-            foreach ($grouped as $g) {
-                $itemCount = count($g['items']);
-                $namaBarang = $itemCount > 1 ? $itemCount . " Jenis Barang" : $g['items'][0];
-                
-                $result[] = (object)[
-                    'idTransaksi' => $g['idTransaksi'],
-                    'tanggal' => $g['tanggal'],
-                    'entitas' => $g['entitas'],
-                    'sumber_tujuan' => $g['sumber_tujuan'],
-                    'namaBarang' => $namaBarang,
-                    'qty' => $g['qty'],
-                    'harga_satuan' => $itemCount > 1 ? null : $g['harga_satuan'],
-                    'total_nilai' => $g['total_nilai'],
-                    'keterangan' => $g['keterangan']
-                ];
-            }
-            return $result;
+                ->get()
+                ->all();
         };
 
         // 1. INBOUND (Masuk)

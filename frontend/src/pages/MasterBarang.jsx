@@ -18,13 +18,13 @@ export default function MasterBarang() {
     const [isModalOpen, setModalOpen] = useState(false);
     const [editId, setEditId] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [formData, setFormData] = useState({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, stok: '', minStok: '', hargaBeli: '', hargaJual: '' });
+    const [formData, setFormData] = useState({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, minStok: '', hargaBeli: '', hargaJual: '' });
 
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
 
     const openAddModal = () => {
         setEditId(null);
-        setFormData({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, stok: '', minStok: '', hargaBeli: '', hargaJual: '' });
+        setFormData({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, minStok: '', hargaBeli: '', hargaJual: '' });
         setModalOpen(true);
     };
 
@@ -37,7 +37,6 @@ export default function MasterBarang() {
             satuan_dasar: row.satuan_dasar || row.satuan || '',
             satuan_besar: row.satuan_besar || '',
             rasio_konversi: row.rasio_konversi || 1,
-            stok: row.stok,
             minStok: row.minStok || 0,
             hargaBeli: row.hargaBeli,
             hargaJual: row.hargaJual
@@ -59,6 +58,8 @@ export default function MasterBarang() {
         try {
             const payload = { ...formData, rasio_konversi: Number(formData.rasio_konversi) || 1 };
             if (!payload.satuan_besar) { payload.satuan_besar = null; payload.rasio_konversi = 1; }
+            // Stok awal selalu 0 saat tambah baru — gunakan menu Penyesuaian Stok untuk input stok agar memiliki kode batch
+            if (!editId) { payload.stok = 0; }
 
             if (editId) {
                 if(!isApiOffline) await apiCall(`/items/${editId}`, 'PUT', { ...payload, log_user: currentUser.namaLengkap, log_detail: `Mengubah Data Barang: ${editId}`, id_key: 'kodeBarang' });
@@ -170,12 +171,11 @@ export default function MasterBarang() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium mb-1 text-slate-700">Stok Awal ({formData.satuan_dasar || 'unit'})</label>
-                            <input required type="number" className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.stok} onChange={e => setFormData({...formData, stok: e.target.value === '' ? '' : Number(e.target.value)})} />
-                        </div>
-                        <div>
                             <label className="block text-sm font-medium mb-1 text-slate-700">Min Stok</label>
                             <input required type="number" className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.minStok} onChange={e => setFormData({...formData, minStok: e.target.value === '' ? '' : Number(e.target.value)})} />
+                        </div>
+                        <div className="flex items-end">
+                            <p className="text-xs text-slate-400 pb-3">ℹ️ Stok awal diisi melalui menu <strong>Penyesuaian Stok</strong> agar tercatat dengan kode batch.</p>
                         </div>
                     </div>
 

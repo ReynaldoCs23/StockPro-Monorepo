@@ -42,7 +42,7 @@ function PermissionGrid({ allPermissions, userPermissions, setUserPermissions })
         lokasi: 'Lokasi',
         supplier: 'Supplier',
         pelanggan: 'Pelanggan',
-        laporan: 'Laporan',
+        laporan: 'Laporan Mutasi',
     };
 
     const isChecked = (module, action) => userPermissions.includes(`${action}_${module}`);
@@ -78,7 +78,7 @@ function PermissionGrid({ allPermissions, userPermissions, setUserPermissions })
                 ))}
             </div>
             {/* Rows */}
-            {Object.keys(allPermissions).filter(m => m !== 'manajemen_user' && m !== 'laporan').map((module, idx) => (
+            {Object.keys(allPermissions).filter(m => m !== 'manajemen_user').map((module, idx) => (
                 <div key={module} className={`grid grid-cols-[1fr_repeat(4,_64px)] items-center ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} border-b border-slate-100 last:border-b`}>
                     <div className="px-4 py-3 flex items-center gap-2">
                         <button type="button" onClick={() => toggleAllModule(module)} className="text-sm font-semibold text-slate-700 hover:text-blue-600 transition-colors">

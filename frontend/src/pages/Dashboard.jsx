@@ -78,10 +78,23 @@ export default function Dashboard() {
         }
     }, []);
 
-    const stats = useMemo(() => {
+    // === OPTIMASI: Pecah useMemo menjadi 3 bagian independen ===
+
+    // 1/3: Statistik Katalog — hanya dihitung ulang jika data items berubah
+    const itemStats = useMemo(() => {
         const totalJenis = items.length;
         const totalStok = items.reduce((acc, curr) => acc + Number(curr.stok || 0), 0);
+        return { totalJenis, totalStok };
+    }, [items]);
 
+    // 2/3: User Aktif — hanya dihitung ulang jika data users berubah
+    const activeUsers = useMemo(() => {
+        const todayString = getLocalYYYYMMDD(new Date());
+        return (users || []).filter(u => !u.masaBerlaku || u.masaBerlaku >= todayString);
+    }, [users]);
+
+    // 3/3: Transaksi — hanya dihitung ulang jika data transaksi atau filter tanggal berubah
+    const transactionStats = useMemo(() => {
         const filteredInbound = inbound.filter(trx => {
             const d = trx.tanggal?.split('T')[0];
             return d >= startDate && d <= endDate;
@@ -121,13 +134,15 @@ export default function Dashboard() {
             })
         ].sort((a, b) => new Date(b.Tanggal) - new Date(a.Tanggal));
 
-        const todayString = getLocalYYYYMMDD(new Date());
-        return {
-            totalJenis, totalStok, totalMasuk, totalKeluar,
-            allTransactions,
-            activeUsers: (users || []).filter(u => !u.masaBerlaku || u.masaBerlaku >= todayString)
-        };
-    }, [items, inbound, outbound, returns, users, startDate, endDate]);
+        return { totalMasuk, totalKeluar, allTransactions };
+    }, [inbound, outbound, returns, startDate, endDate]);
+
+    // Gabungkan agar referensi `stats` di JSX tetap kompatibel
+    const stats = useMemo(() => ({
+        ...itemStats,
+        ...transactionStats,
+        activeUsers,
+    }), [itemStats, transactionStats, activeUsers]);
 
     const formatFullIDR = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
 
