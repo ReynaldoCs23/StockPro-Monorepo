@@ -121,7 +121,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
     const picPenerima = isPembelian ? MY_COMPANY.penanggung_jawab : entityData.penanggung_jawab;
 
     // Calculations
-    const hargaJualTotal = itemsList.reduce((sum, item) => sum + (Number(item.jumlah || 0) * Number(item.harga_satuan || item.harga_modal_satuan || 0)), 0);
+    const hargaJualTotal = itemsList.reduce((sum, item) => sum + (Number(item.jumlah_transaksi || item.jumlah || 0) * Number(item.harga_satuan || item.harga_modal_satuan || 0)), 0);
     const potonganHarga = 0;
     const dpp = hargaJualTotal - potonganHarga;
     const pajakPersen = Number(data.pajak_persen || 0);
@@ -182,12 +182,12 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                     <tbody>
                         {itemsList.map((item, idx) => {
                             const unitPrice = Number(item.harga_satuan ?? item.harga_modal_satuan ?? 0);
-                            const amount = Number(item.jumlah) * unitPrice;
+                            const amount = Number(item.jumlah_transaksi || item.jumlah) * unitPrice;
                             return (
                                 <tr key={idx}>
                                     <td className="border border-black py-2 px-3 text-center">{idx + 1}</td>
                                     <td className="border border-black py-2 px-3 font-mono">{item.kodeBarang}</td>
-                                    <td className="border border-black py-2 px-3">{item.namaBarang || item.item_nama || '-'} <br/><span className="text-xs text-slate-600">({item.jumlah} Pcs x {formatRp(unitPrice)})</span></td>
+                                    <td className="border border-black py-2 px-3">{item.namaBarang || item.item_nama || '-'} <br/><span className="text-xs text-slate-600">({item.jumlah_transaksi || item.jumlah} {item.satuan_transaksi || 'Pcs'} x {formatRp(unitPrice)})</span></td>
                                     <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(amount)}</td>
                                 </tr>
                             );

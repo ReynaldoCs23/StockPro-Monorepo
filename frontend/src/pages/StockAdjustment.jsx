@@ -4,6 +4,7 @@ import StatCardMini from '../components/ui/StatCardMini';
 import DataTable from '../components/ui/DataTable';
 import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
+import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import { apiCall } from '../utils/api';
 import { formatLocalDate, getLocalYYYYMMDD } from '../utils/helpers';
 import useAppStore from '../store/useAppStore';
@@ -130,17 +131,13 @@ export default function StockAdjustment() {
                 </span>
             )
         },
-        { label: 'Alasan', key: 'reason' },
-        { 
-            label: 'Admin', 
-            key: 'user_id',
-            format: (val, row) => row.user ? row.user.namaLengkap : '-' 
-        }
+        { label: 'Alasan', key: 'reason' }
     ];
 
     return (
-        <div className="space-y-6 animate-fadeIn">
-            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        <div>
+            <div className="space-y-6 animate-fadeIn print:hidden">
+                {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
             {/* 1. Filter Tanggal di Kanan Atas */}
             <div className="flex justify-end mb-2">
@@ -185,6 +182,15 @@ export default function StockAdjustment() {
                 lastPage={lastPage}
                 onPageChange={setCurrentPage}
                 onAdd={can('create_penyesuaian_stok') ? openAddModal : null}
+            />
+            </div>
+
+            <ReportPrintTemplate 
+                title="LAPORAN PENYESUAIAN STOK" 
+                type="master" 
+                columns={columns} 
+                data={adjustments} 
+                dateRange={startDate && endDate ? `${formatLocalDate(startDate)} - ${formatLocalDate(endDate)}` : ''} 
             />
 
             {/* Modal Form */}

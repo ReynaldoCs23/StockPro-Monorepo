@@ -166,12 +166,25 @@ export default function BarangMasuk() {
 
     const handleRowChange = (index, field, value) => {
         const newCart = [...cartItems];
+        const oldSatuan = newCart[index].satuan_transaksi;
         newCart[index][field] = value;
+        
+        const item = items.find(i => i.kodeBarang === newCart[index].kodeBarang);
+        
         if (field === 'kodeBarang') {
-            const item = items.find(i => i.kodeBarang === value);
             if (item) {
                 newCart[index].harga_modal_satuan = item.hargaBeli;
                 newCart[index].satuan_transaksi = item.satuan_dasar || '';
+            }
+        } else if (field === 'satuan_transaksi' && item) {
+            const isNowBesar = value === item.satuan_besar;
+            const wasBesar = oldSatuan === item.satuan_besar;
+            const rasio = Number(item.rasio_konversi || 1);
+            
+            if (isNowBesar && !wasBesar) {
+                newCart[index].harga_modal_satuan = (Number(newCart[index].harga_modal_satuan) || 0) * rasio;
+            } else if (!isNowBesar && wasBesar) {
+                newCart[index].harga_modal_satuan = (Number(newCart[index].harga_modal_satuan) || 0) / rasio;
             }
         }
         setCartItems(newCart);
@@ -210,7 +223,7 @@ export default function BarangMasuk() {
         const idPrefix = isMakloon ? 'MKL-IN' : 'INV-IN';
         const finalId = editId || generateId(idPrefix, inbound, 'idTransaksi');
 
-        const subtotalCalc = validItems.reduce((sum, it) => sum + (getActualBaseQty(it) * Number(it.harga_modal_satuan || 0)), 0);
+        const subtotalCalc = validItems.reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
         const pajakNominalCalc = subtotalCalc * (pajakPersen / 100);
 
         const payload = {
@@ -456,7 +469,7 @@ export default function BarangMasuk() {
                                 {cartItems.map((item, idx) => {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
                                     const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
-                                    const lineSubtotal = getActualBaseQty(item) * Number(item.harga_modal_satuan || 0);
+                                    const lineSubtotal = Number(item.jumlah) * Number(item.harga_modal_satuan || 0);
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
                                         <select required className="flex-1 min-w-[180px] p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.kodeBarang} onChange={e => handleRowChange(idx, 'kodeBarang', e.target.value)}>
@@ -488,7 +501,7 @@ export default function BarangMasuk() {
                     </div>
 
                     {(() => {
-                        const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => sum + (getActualBaseQty(it) * Number(it.harga_modal_satuan || 0)), 0);
+                        const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
                         return (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">

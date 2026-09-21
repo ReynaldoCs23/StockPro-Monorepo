@@ -193,9 +193,6 @@ export default function LaporanMutasi() {
                         {/* Header */}
                         <div className="flex justify-between items-start border-b-2 border-[#1e293b] pb-4 mb-1">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-[#0f172a] text-[#ffffff] flex items-center justify-center font-bold text-xl rounded">
-                                    {companyProfile?.nama?.substring(0, 2).toUpperCase() || 'MJ'}
-                                </div>
                                 <div>
                                     <h1 className="text-xl font-extrabold text-[#1e293b]">{companyProfile?.nama || 'PT MARA JAYA DEWI SAKTI'}</h1>
                                     <p className="text-[11px] text-[#2563eb] font-bold tracking-wider">SISTEM MANAJEMEN INVENTARIS TERPADU • STOCKPRO ERP</p>

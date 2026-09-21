@@ -672,9 +672,6 @@ class TransactionController extends Controller {
             // 1. Force satuan_transaksi from Master Item if empty
             $satuanTransaksi = $satuanTransaksi ?: ($itemMaster->satuan_dasar ?? 'Pcs');
 
-            // 2. Force jumlah_transaksi to strictly mirror realQty
-            $jumlahTransaksi = $realQty;
-
             // 3. Absolute Location Logic for Makloon
             $entitas = $payload['namaSupplier'] ?? ($payload['namaPembeli'] ?? null);
             $lokasi_asal = $item['lokasi_asal'] ?? null;
@@ -723,7 +720,7 @@ class TransactionController extends Controller {
                 }
             }
 
-            $calculatedSubtotal += ($realQty * $hargaSatuan);
+            $calculatedSubtotal += ($jumlahTransaksi * $hargaSatuan);
 
             DB::table('transaction_details')->insert([
                 'idTransaksi' => $payload['idTransaksi'],
@@ -749,21 +746,16 @@ class TransactionController extends Controller {
                         'qty_awal' => $realQty,
                         'qty_sisa' => $realQty,
                         'qty_booking' => 0,
-                        'harga_modal_satuan' => round(floatval($item['harga_modal_satuan'] ?? 0), 2),
+                        'harga_modal_satuan' => round(floatval($hargaSatuan) / $multiplier, 2),
                         'idLokasi' => $item['lokasi_tujuan'] ?? null,
                         'lokasi_rak' => $item['lokasi_asal'] ?? '-',
                     ]);
                     DB::table('items')->where('kodeBarang', $item['kodeBarang'])->increment('stok', $realQty);
 
                     // TASK 4: Recalculate hargaBeli with strict 2-decimal precision
-                    $pricePerUom = floatval($item['harga_modal_satuan'] ?? 0);
-                    if ($pricePerUom > 0) {
-                        $newHargaBeli = $pricePerUom;
-                        if ($multiplier > 1) {
-                            $newHargaBeli = $pricePerUom / $multiplier;
-                        }
-                        $newHargaBeli = round($newHargaBeli, 2);
-                        DB::table('items')->where('kodeBarang', $item['kodeBarang'])->update(['hargaBeli' => $newHargaBeli]);
+                    $pricePerBaseUnit = round(floatval($hargaSatuan) / $multiplier, 2);
+                    if ($pricePerBaseUnit > 0) {
+                        DB::table('items')->where('kodeBarang', $item['kodeBarang'])->update(['hargaBeli' => $pricePerBaseUnit]);
                     }
 
                     // MAKLOON IN: Update harga acuan with BOM cost + jasa + tax per unit

@@ -145,9 +145,9 @@ class DashboardController extends Controller {
                         SUM(
                             CASE 
                                 WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
-                                    ABS(transaction_details.jumlah * transaction_details.harga_satuan)
+                                    ABS(transaction_details.jumlah_transaksi * transaction_details.harga_satuan)
                                 WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                    -ABS(transaction_details.jumlah * transaction_details.harga_satuan)
+                                    -ABS(transaction_details.jumlah_transaksi * transaction_details.harga_satuan)
                                 ELSE 0 
                             END
                         ) as net_daily_base_revenue
@@ -216,7 +216,7 @@ class DashboardController extends Controller {
                     'transactions.entitas as customer',
                     'customers.penanggung_jawab as pic',
                     DB::raw('COUNT(DISTINCT transactions.idTransaksi) as total_trx'),
-                    DB::raw("SUM(CASE WHEN transactions.type = 'OUT' THEN transaction_details.jumlah * transaction_details.harga_satuan ELSE 0 END) - SUM(CASE WHEN transactions.type = 'RET' AND transactions.sumber_tujuan LIKE '%RET_IN%' THEN transaction_details.jumlah * transaction_details.harga_satuan ELSE 0 END) as revenue"),
+                    DB::raw("SUM(CASE WHEN transactions.type = 'OUT' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END) - SUM(CASE WHEN transactions.type = 'RET' AND transactions.sumber_tujuan LIKE '%RET_IN%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END) as revenue"),
                     DB::raw("SUM(CASE WHEN transactions.type = 'OUT' THEN transaction_details.jumlah ELSE 0 END) as volume_out"),
                     DB::raw("SUM(CASE WHEN transactions.type = 'RET' AND transactions.sumber_tujuan LIKE '%RET_IN%' THEN transaction_details.jumlah ELSE 0 END) as volume_ret")
                 )
@@ -230,7 +230,7 @@ class DashboardController extends Controller {
                 ->whereBetween('transactions.tanggal', [$cleanStart, $cleanEnd])
                 ->whereNotNull('transactions.entitas')
                 ->groupBy('transactions.entitas', 'customers.penanggung_jawab')
-                ->havingRaw("SUM(CASE WHEN transactions.type = 'OUT' THEN transaction_details.jumlah * transaction_details.harga_satuan ELSE 0 END) - SUM(CASE WHEN transactions.type = 'RET' AND transactions.sumber_tujuan LIKE '%RET_IN%' THEN transaction_details.jumlah * transaction_details.harga_satuan ELSE 0 END) > 0")
+                ->havingRaw("SUM(CASE WHEN transactions.type = 'OUT' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END) - SUM(CASE WHEN transactions.type = 'RET' AND transactions.sumber_tujuan LIKE '%RET_IN%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END) > 0")
                 ->orderByDesc('revenue')
                 ->limit(5)
                 ->get()
@@ -379,14 +379,14 @@ class DashboardController extends Controller {
                     SUM(
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN 
-                                ABS(transaction_details.jumlah * transaction_details.harga_satuan)
+                                ABS(transaction_details.jumlah_transaksi * transaction_details.harga_satuan)
                             ELSE 0 
                         END
                     ) as revenue_out,
                     SUM(
                         CASE 
                             WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN 
-                                ABS(transaction_details.jumlah * transaction_details.harga_satuan)
+                                ABS(transaction_details.jumlah_transaksi * transaction_details.harga_satuan)
                             ELSE 0 
                         END
                     ) as revenue_ret,

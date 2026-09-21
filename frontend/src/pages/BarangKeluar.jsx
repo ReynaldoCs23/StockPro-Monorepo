@@ -196,7 +196,10 @@ export default function BarangKeluar() {
         if (formData.tujuan === 'Penjualan ke Customer') {
             validItems.forEach(it => {
                 const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
-                totalTransaksiValue += (getActualBaseQty(it) * Number(stockData?.hargaJual || 0));
+                const isBesar = it.satuan_transaksi === stockData?.satuan_besar;
+                const rasio = Number(stockData?.rasio_konversi || 1);
+                const unitPrice = isBesar ? Number(stockData?.hargaJual || 0) * rasio : Number(stockData?.hargaJual || 0);
+                totalTransaksiValue += (Number(it.jumlah) * unitPrice);
             });
         }
         const pajakNominal = totalTransaksiValue * (pajakPersen / 100);
@@ -211,10 +214,13 @@ export default function BarangKeluar() {
             pajak_nominal: pajakNominal,
             items: validItems.map(item => {
                 const stockData = items.find(i => i.kodeBarang === item.kodeBarang);
+                const isBesar = item.satuan_transaksi === stockData?.satuan_besar;
+                const rasio = Number(stockData?.rasio_konversi || 1);
+                const unitPrice = isBesar ? Number(stockData?.hargaJual || 0) * rasio : Number(stockData?.hargaJual || 0);
                 return {
                     ...item,
                     namaBarang: stockData?.nama || '',
-                    harga_modal_satuan: parseFloat(Number(stockData?.hargaJual || 0).toFixed(2)),
+                    harga_modal_satuan: parseFloat(unitPrice.toFixed(2)),
                     jumlah_transaksi: Number(item.jumlah),
                     satuan_transaksi: item.satuan_transaksi || stockData?.satuan_dasar || '',
                     jumlah: getActualBaseQty(item),
@@ -476,7 +482,10 @@ export default function BarangKeluar() {
                                 {cartItems.map((item, idx) => {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
                                     const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
-                                    const lineSubtotal = getActualBaseQty(item) * Number(selectedItem?.hargaJual || 0);
+                                    const isBesar = item.satuan_transaksi === selectedItem?.satuan_besar;
+                                    const rasio = Number(selectedItem?.rasio_konversi || 1);
+                                    const unitPrice = isBesar ? Number(selectedItem?.hargaJual || 0) * rasio : Number(selectedItem?.hargaJual || 0);
+                                    const lineSubtotal = Number(item.jumlah) * unitPrice;
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
                                         <select required className="flex-1 min-w-[180px] p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.kodeBarang} onChange={e => handleRowChange(idx, 'kodeBarang', e.target.value)}>
@@ -505,7 +514,10 @@ export default function BarangKeluar() {
                     {formData.tujuan === 'Penjualan ke Customer' && (() => {
                         const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => {
                             const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
-                            return sum + (getActualBaseQty(it) * Number(stockData?.hargaJual || 0));
+                            const isBesar = it.satuan_transaksi === stockData?.satuan_besar;
+                            const rasio = Number(stockData?.rasio_konversi || 1);
+                            const unitPrice = isBesar ? Number(stockData?.hargaJual || 0) * rasio : Number(stockData?.hargaJual || 0);
+                            return sum + (Number(it.jumlah) * unitPrice);
                         }, 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
                         return (
