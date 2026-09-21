@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
+import Swal from 'sweetalert2';
 import { Factory, User, Lock } from '../components/icons/Icons';
 import { getLocalYYYYMMDD } from '../utils/helpers';
 import logoImg from '/Images/LogoStockPro.png';
@@ -30,6 +31,12 @@ export default function Login({ fetchAllData }) {
                 if (addSimulatedLog) addSimulatedLog('LOGIN', 'Sistem', `User ${user.namaLengkap} berhasil masuk.`);
                 if (fetchAllData) fetchAllData();
             } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Login Gagal',
+                    text: 'Username atau password salah, atau akun belum terdaftar.',
+                    confirmButtonColor: '#3b82f6'
+                });
                 setError('Username atau password salah / Belum ada akun.');
             }
             return;
@@ -48,9 +55,21 @@ export default function Login({ fetchAllData }) {
             if (!res.ok) {
                 const msg = data.message;
                 if (res.status === 403) {
-                    toast.error(msg || 'Akun Anda tidak dapat diakses. Hubungi Administrator.');
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Akses Ditolak',
+                        text: msg || 'Akun Anda tidak aktif atau kadaluarsa. Hubungi Administrator.',
+                        confirmButtonColor: '#eab308'
+                    });
+                    setError(msg || 'Akun Anda tidak aktif.');
                 } else if (res.status === 401) {
-                    toast.error(msg || 'Username atau Password salah!');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Login Gagal',
+                        text: msg || 'Username atau Password salah!',
+                        confirmButtonColor: '#3b82f6'
+                    });
+                    setError('Username atau Password salah!');
                 } else if (res.status === 422) {
                     toast.error('Format input tidak valid. Periksa kembali data Anda.');
                 } else {
@@ -61,6 +80,12 @@ export default function Login({ fetchAllData }) {
 
             // Check masa berlaku
             if (data.user.masaBerlaku && data.user.masaBerlaku < todayString) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Akun Kedaluwarsa',
+                    text: 'Akun Anda sudah kedaluwarsa. Silakan hubungi Administrator.',
+                    confirmButtonColor: '#eab308'
+                });
                 setError('Akun Anda sudah kedaluwarsa. Silakan hubungi Admin.');
                 return;
             }

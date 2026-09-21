@@ -21,20 +21,82 @@ engine = create_engine(f'mysql+pymysql://root:{password}@127.0.0.1:3307/inventor
 # 1. DEFINISI FUNGSI/ALAT UNTUK GEMINI
 # ==========================================
 
+def get_current_stock(search_item: str = "") -> str:
+    """Ambil stok barang. Isi parameter search_item jika user mencari barang spesifik, biarkan kosong untuk semua."""
+    try:
+        where_clause = f"WHERE nama LIKE '%{search_item}%'" if search_item else ""
+        query = f"SELECT kodeBarang, nama, kategori, stok FROM items {where_clause} LIMIT 30"
+        df = pd.read_sql(query, engine)
+        if df.empty:
+            return "Stok kosong/tidak ditemukan."
+        return df.to_csv(index=False)
+    except Exception as e:
+        return f"Err DB: {e}"
+
+def get_financial_summary(start_date: str, end_date: str) -> str:
+    """Mengambil total nilai transaksi (pemasukan dan pengeluaran) dalam format Rupiah untuk rentang tanggal tertentu (YYYY-MM-DD). Gunakan JIKA user bertanya seputar PROFIT, PEMASUKAN, atau PENGELUARAN."""
+    try:
+        query = f"""
+        SELECT 
+            CASE 
+                WHEN type = 'IN' THEN 'Pengeluaran Uang (Pembelian Stok)'
+                WHEN type = 'OUT' THEN 'Pemasukan Uang (Penjualan Distributor)'
+                WHEN type = 'MAKLOON_IN' THEN 'Pengeluaran Uang (Biaya Jasa Makloon)'
+                WHEN type = 'MAKLOON_OUT' THEN 'Pengeluaran Uang (Bahan Baku Makloon)'
+                WHEN type = 'RET' THEN 'Pemasukan Uang (Pengembalian Dana Return)'
+                ELSE type 
+            END as kategori_keuangan, 
+            SUM(totalTransaksi) as total_nilai_rp 
+        FROM transactions 
+        WHERE DATE(tanggal) BETWEEN '{start_date}' AND '{end_date}' AND status = 'completed' 
+        GROUP BY type
+        """
+        df = pd.read_sql(query, engine)
+        if df.empty or df['total_nilai_rp'].isnull().all():
+            return f"Tidak ada catatan dari {start_date} hingga {end_date}."
+        return df.to_csv(index=False)
+    except Exception as e:
+        return f"Error database: {e}"
+
+def get_item_mutations(start_date: str, end_date: str) -> str:
+    """Mengambil jumlah kuantitas barang masuk dan keluar dalam rentang tanggal (YYYY-MM-DD). Gunakan JIKA ditanya rincian BARANG TERJUAL, BARANG DIBELI, atau PERGERAKAN FISIK."""
+    try:
+        query = f"""
+        SELECT d.namaBarang, 
+            CASE 
+                WHEN t.type = 'IN' THEN 'Masuk (Stok Bertambah)'
+                WHEN t.type = 'OUT' THEN 'Keluar Terjual (Stok Berkurang)'
+                WHEN t.type = 'RET' THEN 'Return (Stok Berkurang)'
+                WHEN t.type = 'MAKLOON_OUT' THEN 'Makloon Keluar (Stok Berkurang)'
+                WHEN t.type = 'MAKLOON_IN' THEN 'Makloon Masuk (Stok Bertambah)'
+                ELSE t.type 
+            END as jenis_pergerakan, 
+            SUM(d.jumlah) as total_qty 
+        FROM transaction_details d 
+        JOIN transactions t ON t.idTransaksi = d.idTransaksi 
+        WHERE DATE(t.tanggal) BETWEEN '{start_date}' AND '{end_date}' AND t.status = 'completed'
+        GROUP BY d.namaBarang, t.type
+        """
+        df = pd.read_sql(query, engine)
+        if df.empty:
+            return f"Tidak ada pergerakan barang dari {start_date} hingga {end_date}."
+        return df.to_csv(index=False)
+    except Exception as e:
+        return f"Error database: {e}"
+
 def get_database_schema() -> str:
-    """Mengambil skema (daftar tabel dan kolom beserta tipe datanya) dari database inventaris. Selalu panggil fungsi ini pertama kali jika Anda belum tahu struktur tabelnya untuk membuat query yang valid!"""
+    """Mengambil skema tabel dan kolom. Panggil HANYA JIKA pertanyaan tidak bisa dijawab oleh fungsi stok, keuangan, atau mutasi!"""
     try:
         query = "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'inventory_db' AND TABLE_NAME != 'migrations'"
         df = pd.read_sql(query, engine)
         if df.empty:
-            return "Skema kosong atau database tidak ditemukan."
+            return "Skema kosong."
         return df.to_csv(index=False)
     except Exception as e:
         return f"Error database: {e}"
 
 def execute_sql_query(query: str) -> str:
-    """Mengeksekusi query MySQL ke database dan mengembalikan hasilnya dalam format CSV. HANYA UNTUK SELECT. DILARANG KERAS mengeksekusi DELETE, UPDATE, DROP, atau INSERT."""
-    # Simple safety guardrail
+    """Mengeksekusi query MySQL dinamis (HANYA SELECT). Panggil setelah Anda mendapat skema, dan HANYA JIKA fungsi stok/keuangan/mutasi tidak bisa digunakan."""
     safe_query = query.strip().upper()
     if not (safe_query.startswith("SELECT") or safe_query.startswith("SHOW") or safe_query.startswith("DESCRIBE")):
          return "Error: Security block! Hanya diperbolehkan perintah SELECT, SHOW, atau DESCRIBE demi keamanan data."
@@ -42,31 +104,23 @@ def execute_sql_query(query: str) -> str:
     try:
         df = pd.read_sql(query, engine)
         if df.empty:
-            return "Query berhasil dieksekusi, tapi hasilnya kosong (tidak ada data)."
+            return "Query berhasil, tapi hasilnya kosong."
         return df.to_csv(index=False)
     except Exception as e:
-        return f"Error eksekusi query (mungkin ada salah syntax kolom/tabel): {e}"
+        return f"Error eksekusi query: {e}"
 
-# Inisialisasi Model dengan Tools
+# Prompt Singkat (Hemat Token)
 system_instruction = """
-Anda adalah AI Data Analyst & Asisten Operasional (Agentic AI) untuk aplikasi StockPro milik PT Mara Jaya Dewi Sakti.
-Anda memiliki akses ke database via eksekusi SQL Dinamis!
-
-LANGKAH KERJA WAJIB JIKA DITANYA DATA:
-1. Panggil fungsi `get_database_schema()` TERLEBIH DAHULU untuk memahami struktur, nama tabel, dan nama kolom yang ada di database.
-2. Buat query MySQL yang sesuai, lalu panggil fungsi `execute_sql_query(query)` untuk mendapatkan datanya.
-3. Rangkai jawaban akhir yang mudah dibaca berdasarkan data yang Anda dapatkan.
-
-ATURAN PENTING:
-- DILARANG KERAS menggunakan format matematika LaTeX (seperti `\frac`, `\text`, atau tanda `$`). Gunakan teks biasa.
-- Jawab dengan bahasa Indonesia yang natural, ramah, dan ringkas.
-- JANGAN tampilkan syntax SQL mentah kepada user. User hanya butuh jawaban akhirnya.
-- Jika pengguna bingung letak suatu menu, arahkan ke: Dashboard, AI Assistant, Kalender Transaksi, Inventory (Masuk, Keluar, Return, Adjustment, Makloon), Master Data, atau System Logs.
+Anda AI Data Analyst StockPro.
+STRATEGI:
+1. Prioritas Utama: Gunakan fungsi get_current_stock (bisa search nama), get_financial_summary (profit/uang), atau get_item_mutations (mutasi barang/qty).
+2. Fallback: JIKA DAN HANYA JIKA sangat terpaksa, panggil get_database_schema lalu execute_sql_query(query).
+ATURAN: Jawab pakai bahasa Indonesia singkat & natural. DILARANG pakai format matematika LaTeX ($ atau \frac). JANGAN tampilkan SQL.
 """
 
 model = genai.GenerativeModel(
-    model_name='gemini-3.5-flash',
-    tools=[get_database_schema, execute_sql_query],
+    model_name='gemini-3.6-flash',
+    tools=[get_current_stock, get_financial_summary, get_item_mutations, get_database_schema, execute_sql_query],
     system_instruction=system_instruction
 )
 
@@ -80,8 +134,8 @@ def chat():
     question = data['question']
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    # Bungkus pertanyaan dengan konteks hari ini agar AI tahu tanggal berapa sekarang
-    context_msg = f"INFORMASI SISTEM: Hari ini adalah {today_str}. Jika pengguna menanyakan 'hari ini', 'minggu ini', atau 'kemarin', hitung tanggalnya berdasarkan {today_str}. \n\nPertanyaan Pengguna: \"{question}\""
+    # Context singkat hemat token
+    context_msg = f"Tgl hari ini: {today_str}. Tanya: {question}"
     
     try:
         # Gunakan enable_automatic_function_calling agar Gemini mengeksekusi alat dan merangkai jawaban akhir secara otomatis!
