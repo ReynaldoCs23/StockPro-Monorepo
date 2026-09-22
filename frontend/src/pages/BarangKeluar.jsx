@@ -198,7 +198,7 @@ export default function BarangKeluar() {
                 const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
                 const isBesar = it.satuan_transaksi === stockData?.satuan_besar;
                 const rasio = Number(stockData?.rasio_konversi || 1);
-                const unitPrice = isBesar ? Number(stockData?.hargaJual || 0) * rasio : Number(stockData?.hargaJual || 0);
+                const unitPrice = isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0);
                 totalTransaksiValue += (Number(it.jumlah) * unitPrice);
             });
         }
@@ -216,7 +216,7 @@ export default function BarangKeluar() {
                 const stockData = items.find(i => i.kodeBarang === item.kodeBarang);
                 const isBesar = item.satuan_transaksi === stockData?.satuan_besar;
                 const rasio = Number(stockData?.rasio_konversi || 1);
-                const unitPrice = isBesar ? Number(stockData?.hargaJual || 0) * rasio : Number(stockData?.hargaJual || 0);
+                const unitPrice = isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0);
                 return {
                     ...item,
                     namaBarang: stockData?.nama || '',
@@ -484,7 +484,7 @@ export default function BarangKeluar() {
                                     const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
                                     const isBesar = item.satuan_transaksi === selectedItem?.satuan_besar;
                                     const rasio = Number(selectedItem?.rasio_konversi || 1);
-                                    const unitPrice = isBesar ? Number(selectedItem?.hargaJual || 0) * rasio : Number(selectedItem?.hargaJual || 0);
+                                    const unitPrice = isBesar ? (Number(selectedItem?.hargaJual_besar) || Number(selectedItem?.hargaJual || 0) * rasio) : Number(selectedItem?.hargaJual || 0);
                                     const lineSubtotal = Number(item.jumlah) * unitPrice;
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
@@ -516,7 +516,7 @@ export default function BarangKeluar() {
                             const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
                             const isBesar = it.satuan_transaksi === stockData?.satuan_besar;
                             const rasio = Number(stockData?.rasio_konversi || 1);
-                            const unitPrice = isBesar ? Number(stockData?.hargaJual || 0) * rasio : Number(stockData?.hargaJual || 0);
+                            const unitPrice = isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0);
                             return sum + (Number(it.jumlah) * unitPrice);
                         }, 0);
                         const taxNominal = subtotal * (pajakPersen / 100);

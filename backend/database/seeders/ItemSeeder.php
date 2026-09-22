@@ -21,7 +21,9 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 9910,
-                'hargaJual' => 40000
+                'hargaBeli_besar' => 0,
+                'hargaJual' => 40000,
+                'hargaJual_besar' => 0
             ],
             [
                 'kodeBarang' => 'BRG-0002',
@@ -33,8 +35,10 @@ class ItemSeeder extends Seeder
                 'rasio_konversi' => 48,
                 'stok' => 0,
                 'minStok' => 0,
-                'hargaBeli' => 12000,
-                'hargaJual' => 15000
+                'hargaBeli' => 250,
+                'hargaBeli_besar' => 12000,
+                'hargaJual' => 350,
+                'hargaJual_besar' => 15000
             ],
             [
                 'kodeBarang' => 'BRG-0003',
@@ -47,7 +51,9 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 555,
-                'hargaJual' => 2581
+                'hargaBeli_besar' => 6660,
+                'hargaJual' => 2581,
+                'hargaJual_besar' => 30972
             ],
             [
                 'kodeBarang' => 'RM-0001',
@@ -60,7 +66,9 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 4505,
-                'hargaJual' => 0
+                'hargaBeli_besar' => 0,
+                'hargaJual' => 0,
+                'hargaJual_besar' => 0
             ],
             [
                 'kodeBarang' => 'RM-0002',
@@ -73,7 +81,9 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 73,
-                'hargaJual' => 0
+                'hargaBeli_besar' => 0,
+                'hargaJual' => 0,
+                'hargaJual_besar' => 0
             ],
             [
                 'kodeBarang' => 'RM-0003',
@@ -86,7 +96,9 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 910,
-                'hargaJual' => 0
+                'hargaBeli_besar' => 0,
+                'hargaJual' => 0,
+                'hargaJual_besar' => 0
             ],
                         [
                 'kodeBarang' => 'RM-0004',
@@ -99,7 +111,9 @@ class ItemSeeder extends Seeder
                 'stok' => 0,
                 'minStok' => 0,
                 'hargaBeli' => 20000,
-                'hargaJual' => 0
+                'hargaBeli_besar' => 0,
+                'hargaJual' => 0,
+                'hargaJual_besar' => 0
             ], 
         ];
 
@@ -116,7 +130,9 @@ class ItemSeeder extends Seeder
                     'stok' => $item['stok'],
                     'minStok' => $item['minStok'],
                     'hargaBeli' => $item['hargaBeli'],
+                    'hargaBeli_besar' => $item['hargaBeli_besar'],
                     'hargaJual' => $item['hargaJual'],
+                    'hargaJual_besar' => $item['hargaJual_besar'],
                     'created_at' => now(),
                     'updated_at' => now()
                 ]

@@ -182,9 +182,13 @@ export default function BarangMasuk() {
             const rasio = Number(item.rasio_konversi || 1);
             
             if (isNowBesar && !wasBesar) {
-                newCart[index].harga_modal_satuan = (Number(newCart[index].harga_modal_satuan) || 0) * rasio;
+                // Use hargaBeli_besar if available, otherwise multiply by rasio
+                newCart[index].harga_modal_satuan = Number(item.hargaBeli_besar) > 0
+                    ? item.hargaBeli_besar
+                    : (Number(newCart[index].harga_modal_satuan) || 0) * rasio;
             } else if (!isNowBesar && wasBesar) {
-                newCart[index].harga_modal_satuan = (Number(newCart[index].harga_modal_satuan) || 0) / rasio;
+                // Switch back to base unit price
+                newCart[index].harga_modal_satuan = item.hargaBeli;
             }
         }
         setCartItems(newCart);

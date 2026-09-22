@@ -6,23 +6,18 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('items', function (Blueprint $table) {
-            $table->timestamp('last_sold_at')->nullable();
+            $table->decimal('hargaBeli_besar', 15, 2)->default(0)->after('hargaBeli');
+            $table->decimal('hargaJual_besar', 15, 2)->default(0)->after('hargaJual');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('items', function (Blueprint $table) {
-            $table->dropColumn('last_sold_at');
+            $table->dropColumn(['hargaBeli_besar', 'hargaJual_besar']);
         });
     }
 };

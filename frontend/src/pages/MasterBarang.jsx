@@ -18,13 +18,13 @@ export default function MasterBarang() {
     const [isModalOpen, setModalOpen] = useState(false);
     const [editId, setEditId] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [formData, setFormData] = useState({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, minStok: '', hargaBeli: '', hargaJual: '' });
+    const [formData, setFormData] = useState({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, minStok: '', hargaBeli: '', hargaBeli_besar: '', hargaJual: '', hargaJual_besar: '' });
 
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
 
     const openAddModal = () => {
         setEditId(null);
-        setFormData({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, minStok: '', hargaBeli: '', hargaJual: '' });
+        setFormData({ nama: '', kategori: '', tipeBarang: 'Bahan Baku', satuan_dasar: '', satuan_besar: '', rasio_konversi: 1, minStok: '', hargaBeli: '', hargaBeli_besar: '', hargaJual: '', hargaJual_besar: '' });
         setModalOpen(true);
     };
 
@@ -39,7 +39,9 @@ export default function MasterBarang() {
             rasio_konversi: row.rasio_konversi || 1,
             minStok: row.minStok || 0,
             hargaBeli: row.hargaBeli,
-            hargaJual: row.hargaJual
+            hargaBeli_besar: row.hargaBeli_besar || '',
+            hargaJual: row.hargaJual,
+            hargaJual_besar: row.hargaJual_besar || ''
         });
         setModalOpen(true);
     };
@@ -87,8 +89,10 @@ export default function MasterBarang() {
         { key: 'satuan_dasar', label: 'Satuan Dasar' },
         { key: 'satuan_besar', label: 'Satuan Besar', format: (v, row) => v ? `${v} (1:${row.rasio_konversi})` : '-' },
         { key: 'stok', label: 'Stok', format: (v, row) => <span className={`font-bold ${Number(v) <= Number(row.minStok || 0) ? 'text-rose-600' : ''}`}>{v} {row.satuan_dasar || ''}</span>, exportFormat: (v, row) => `${v} ${row.satuan_dasar || ''}` },
-        { key: 'hargaBeli', label: 'Harga Acuan', format: v => formatRp(v), exportFormat: v => formatRp(v) },
-        { key: 'hargaJual', label: 'Harga Jual', format: v => formatRp(v), exportFormat: v => formatRp(v) }
+        { key: 'hargaBeli', label: 'Harga Beli', format: (v, row) => row.satuan_besar ? `${formatRp(v)} /${row.satuan_dasar}` : formatRp(v), exportFormat: v => formatRp(v) },
+        { key: 'hargaBeli_besar', label: 'Harga Beli Besar', format: (v, row) => row.satuan_besar && Number(v) > 0 ? `${formatRp(v)} /${row.satuan_besar}` : '-', exportFormat: v => Number(v) > 0 ? formatRp(v) : '-' },
+        { key: 'hargaJual', label: 'Harga Jual', format: (v, row) => row.satuan_besar ? `${formatRp(v)} /${row.satuan_dasar}` : formatRp(v), exportFormat: v => formatRp(v) },
+        { key: 'hargaJual_besar', label: 'Harga Jual Besar', format: (v, row) => row.satuan_besar && Number(v) > 0 ? `${formatRp(v)} /${row.satuan_besar}` : '-', exportFormat: v => Number(v) > 0 ? formatRp(v) : '-' }
     ];
 
     return (
@@ -181,14 +185,31 @@ export default function MasterBarang() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium mb-1 text-slate-700">Harga Beli</label>
+                            <label className="block text-sm font-medium mb-1 text-slate-700">Harga Beli /{formData.satuan_dasar || 'Satuan'}</label>
                             <input required type="number" className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.hargaBeli} onChange={e => setFormData({...formData, hargaBeli: e.target.value === '' ? '' : Number(e.target.value)})} />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1 text-slate-700">Harga Jual</label>
+                            <label className="block text-sm font-medium mb-1 text-slate-700">Harga Jual /{formData.satuan_dasar || 'Satuan'}</label>
                             <input required type="number" className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.hargaJual} onChange={e => setFormData({...formData, hargaJual: e.target.value === '' ? '' : Number(e.target.value)})} />
                         </div>
                     </div>
+
+                    {formData.satuan_besar && (
+                        <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+                            <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">💰 Harga Grosir ({formData.satuan_besar})</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 text-slate-700">Harga Beli /{formData.satuan_besar}</label>
+                                    <input type="number" className="w-full p-2.5 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" placeholder={`Opsional (default: ${formatRp((formData.hargaBeli || 0) * (formData.rasio_konversi || 1))})`} value={formData.hargaBeli_besar} onChange={e => setFormData({...formData, hargaBeli_besar: e.target.value === '' ? '' : Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 text-slate-700">Harga Jual /{formData.satuan_besar}</label>
+                                    <input type="number" className="w-full p-2.5 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" placeholder={`Opsional (default: ${formatRp((formData.hargaJual || 0) * (formData.rasio_konversi || 1))})`} value={formData.hargaJual_besar} onChange={e => setFormData({...formData, hargaJual_besar: e.target.value === '' ? '' : Number(e.target.value)})} />
+                                </div>
+                            </div>
+                            <p className="text-xs text-amber-600">ℹ️ Kosongkan jika harga grosir = harga satuan × rasio konversi</p>
+                        </div>
+                    )}
 
                     <button type="submit" disabled={isProcessing} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl mt-4 transition-colors">
                         {isProcessing ? "Memproses..." : (editId ? 'Simpan Perubahan' : 'Simpan Barang')}

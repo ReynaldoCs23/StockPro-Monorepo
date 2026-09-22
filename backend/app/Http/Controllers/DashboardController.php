@@ -18,64 +18,47 @@ class DashboardController extends Controller {
 
         $cacheKey = "dashboard_analytics_{$cleanStart}_{$cleanEnd}";
 
-        // Cache dihapus agar data 100% real-time
-        $dashboardData = call_user_func(function () use ($cleanStart, $cleanEnd, $startFilter, $endFilter) {
-            // --- DYNAMIC DASHBOARD ANALYTICS CLOSURES ---
+        // Cache diaktifkan selama 5 menit (300 detik) untuk menghemat RAM dan CPU
+        $dashboardData = \Illuminate\Support\Facades\Cache::remember($cacheKey, 300, function () use ($cleanStart, $cleanEnd, $startFilter, $endFilter) {
+            // --- DYNAMIC DASHBOARD ANALYTICS ---
             $durationDays = \Carbon\Carbon::parse($startFilter)->diffInDays(\Carbon\Carbon::parse($endFilter)) + 1;
             $prevStartDate = \Carbon\Carbon::parse($startFilter)->subDays($durationDays)->format('Y-m-d');
             $prevEndDate = \Carbon\Carbon::parse($endFilter)->subDays($durationDays)->format('Y-m-d');
 
-            $getQtyMasuk = function($start, $end) {
-                return (int) DB::table('transaction_details')
+            // === OPTIMIZED: Single unified query per period (was 4 separate queries each) ===
+            $getConsolidatedMetrics = function($start, $end) {
+                $row = DB::table('transaction_details')
                     ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
                     ->whereBetween('transactions.tanggal', [$start, $end])
                     ->where('transactions.status', 'completed')
-                    ->value(DB::raw("
+                    ->select(DB::raw("
                         COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'INV-IN%' THEN transaction_details.jumlah ELSE 0 END), 0)
-                        +
-                        COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'MKL-IN%' THEN transaction_details.jumlah ELSE 0 END), 0)
-                        -
-                        COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'RET-OUT%' THEN transaction_details.jumlah ELSE 0 END), 0)
-                    "));
-            };
-
-            $getQtyKeluar = function($start, $end) {
-                return (int) DB::table('transaction_details')
-                    ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
-                    ->whereBetween('transactions.tanggal', [$start, $end])
-                    ->where('transactions.status', 'completed')
-                    ->value(DB::raw("
+                        + COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'MKL-IN%' THEN transaction_details.jumlah ELSE 0 END), 0)
+                        - COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'RET-OUT%' THEN transaction_details.jumlah ELSE 0 END), 0)
+                        as qty_masuk,
                         COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN transaction_details.jumlah ELSE 0 END), 0)
-                        +
-                        COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'MKL-OUT%' THEN transaction_details.jumlah ELSE 0 END), 0)
-                        -
-                        COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN transaction_details.jumlah ELSE 0 END), 0)
-                    "));
+                        + COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'MKL-OUT%' THEN transaction_details.jumlah ELSE 0 END), 0)
+                        - COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN transaction_details.jumlah ELSE 0 END), 0)
+                        as qty_keluar,
+                        COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'INV-IN%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END), 0)
+                        + COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'MKL-IN%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END), 0)
+                        - COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'RET-OUT%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END), 0)
+                        as vendor_expense,
+                        COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'INV-OUT%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END), 0)
+                        - COALESCE(SUM(CASE WHEN transactions.idTransaksi LIKE 'RET-IN%' THEN transaction_details.jumlah_transaksi * transaction_details.harga_satuan ELSE 0 END), 0)
+                        as distributor_sales
+                    "))
+                    ->first();
+                return [
+                    'qty_masuk' => (int)($row->qty_masuk ?? 0),
+                    'qty_keluar' => (int)($row->qty_keluar ?? 0),
+                    'vendor_expense' => (float)($row->vendor_expense ?? 0),
+                    'distributor_sales' => (float)($row->distributor_sales ?? 0),
+                ];
             };
 
-            $getVendorExpense = function($start, $end) {
-                return (float) DB::table('transactions')
-                    ->whereBetween('tanggal', [$start, $end])
-                    ->where('status', 'completed')
-                    ->value(DB::raw("
-                        COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%' THEN totalTransaksi ELSE 0 END), 0) 
-                        +
-                        COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%' THEN totalTransaksi ELSE 0 END), 0)
-                        - 
-                        COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%' THEN totalTransaksi ELSE 0 END), 0)
-                    "));
-            };
-
-            $getDistributorSales = function($start, $end) {
-                return (float) DB::table('transactions')
-                    ->whereBetween('tanggal', [$start, $end])
-                    ->where('status', 'completed')
-                    ->value(DB::raw("
-                        COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-OUT%' THEN totalTransaksi ELSE 0 END), 0) 
-                        - 
-                        COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%' THEN totalTransaksi ELSE 0 END), 0)
-                    "));
-            };
+            $currentMetrics = $getConsolidatedMetrics($cleanStart, $cleanEnd);
+            $prevMetrics = $getConsolidatedMetrics($prevStartDate, $prevEndDate);
 
             $calculateMetric = function($currentTotal, $previousTotal) {
                 $percentage = ($previousTotal > 0) ? (($currentTotal - $previousTotal) / $previousTotal) * 100 : (($currentTotal > 0) ? 100 : 0);
@@ -86,10 +69,10 @@ class DashboardController extends Controller {
                 ];
             };
 
-            $metricBarangMasuk = $calculateMetric($getQtyMasuk($cleanStart, $cleanEnd), $getQtyMasuk($prevStartDate, $prevEndDate));
-            $metricBarangKeluar = $calculateMetric($getQtyKeluar($cleanStart, $cleanEnd), $getQtyKeluar($prevStartDate, $prevEndDate));
-            $metricPengeluaranVendor = $calculateMetric($getVendorExpense($cleanStart, $cleanEnd), $getVendorExpense($prevStartDate, $prevEndDate));
-            $metricPenjualanDistributor = $calculateMetric($getDistributorSales($cleanStart, $cleanEnd), $getDistributorSales($prevStartDate, $prevEndDate));
+            $metricBarangMasuk = $calculateMetric($currentMetrics['qty_masuk'], $prevMetrics['qty_masuk']);
+            $metricBarangKeluar = $calculateMetric($currentMetrics['qty_keluar'], $prevMetrics['qty_keluar']);
+            $metricPengeluaranVendor = $calculateMetric($currentMetrics['vendor_expense'], $prevMetrics['vendor_expense']);
+            $metricPenjualanDistributor = $calculateMetric($currentMetrics['distributor_sales'], $prevMetrics['distributor_sales']);
 
             // Retro-compatibility variables
             $vendorExpense = $metricPengeluaranVendor['value'];

@@ -41,7 +41,7 @@ export default function BarangReturn() {
 
     React.useEffect(() => {
         if (!isApiOffline && isModalOpen && flowType === 'RET_IN') {
-            apiCall(`/transactions?category=outbound&recent_only=true`)
+            apiCall(`/transactions?category=outbound&recent_only=true&unused_only=true`)
                 .then(res => setRecentOutbound(res.data?.data || res.data || res || []))
                 .catch(() => { });
         }

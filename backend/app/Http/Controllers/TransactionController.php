@@ -106,6 +106,14 @@ class TransactionController extends Controller {
             $query->where('transactions.tanggal', '>=', now()->subDays(7));
         }
 
+        if ($request->query('unused_only') === 'true') {
+            $usedRefs = DB::table('transactions')
+                ->where('type', 'RET')
+                ->whereNotNull('idReferensi')
+                ->pluck('idReferensi');
+            $query->whereNotIn('transactions.idTransaksi', $usedRefs);
+        }
+
         $companyProfile = \App\Models\CompanyProfile::first();
         
         $baseQuery = clone $query;
@@ -302,6 +310,7 @@ class TransactionController extends Controller {
             ->where('idTransaksi', 'like', 'MKL-OUT%')
             ->whereNotNull('target_kode_barang')
             ->whereNotIn('idTransaksi', $used)
+            ->where('tanggal', '>=', \Carbon\Carbon::now()->subDays(7))
             ->orderBy('tanggal', 'desc')
             ->get();
 
@@ -557,6 +566,13 @@ class TransactionController extends Controller {
             }
 
             foreach ($details as $detail) {
+                $itemMaster = DB::table('items')->where('kodeBarang', $detail->kodeBarang)->first();
+                $multiplier = 1;
+                if ($itemMaster && $detail->satuan_transaksi === $itemMaster->satuan_besar) {
+                    $multiplier = max(1, intval($itemMaster->rasio_konversi ?? 1));
+                }
+                $hargaModalSatuanBase = round(floatval($detail->harga_satuan) / $multiplier, 2);
+
                 if ($trx->type === 'OUT') {
                     DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
                     DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah, ['last_sold_at' => Carbon::now()]);
@@ -569,7 +585,7 @@ class TransactionController extends Controller {
                         'qty_awal' => $detail->jumlah,
                         'qty_sisa' => $detail->jumlah,
                         'qty_booking' => 0,
-                        'harga_modal_satuan' => $detail->harga_satuan,
+                        'harga_modal_satuan' => $hargaModalSatuanBase,
                         'idLokasi' => $detail->lokasi_tujuan ?? null,
                         'lokasi_rak' => $detail->lokasi_asal ?? '-',
                     ]);
@@ -588,7 +604,7 @@ class TransactionController extends Controller {
                             'qty_awal' => $detail->jumlah,
                             'qty_sisa' => $detail->jumlah,
                             'qty_booking' => 0,
-                            'harga_modal_satuan' => $detail->harga_satuan,
+                            'harga_modal_satuan' => $hargaModalSatuanBase,
                             'idLokasi' => $detail->lokasi_tujuan ?? null,
                             'lokasi_rak' => $detail->lokasi_asal ?? '-',
                         ]);
@@ -755,7 +771,12 @@ class TransactionController extends Controller {
                     // TASK 4: Recalculate hargaBeli with strict 2-decimal precision
                     $pricePerBaseUnit = round(floatval($hargaSatuan) / $multiplier, 2);
                     if ($pricePerBaseUnit > 0) {
-                        DB::table('items')->where('kodeBarang', $item['kodeBarang'])->update(['hargaBeli' => $pricePerBaseUnit]);
+                        $updateData = ['hargaBeli' => $pricePerBaseUnit];
+                        // Also update hargaBeli_besar when purchasing in bulk units
+                        if ($multiplier > 1) {
+                            $updateData['hargaBeli_besar'] = round(floatval($hargaSatuan), 2);
+                        }
+                        DB::table('items')->where('kodeBarang', $item['kodeBarang'])->update($updateData);
                     }
 
                     // MAKLOON IN: Update harga acuan with BOM cost + jasa + tax per unit
@@ -1070,6 +1091,11 @@ class TransactionController extends Controller {
                         $lokasiRakForBatch = $detail->lokasi_asal;
                     }
 
+                    $multiplier = 1;
+                    if ($itemMaster && $detail->satuan_transaksi === $itemMaster->satuan_besar) {
+                        $multiplier = max(1, intval($itemMaster->rasio_konversi ?? 1));
+                    }
+
                     \App\Models\ItemBatch::create([
                         'id_batch' => $id_batch_baru,
                         'kodeBarang' => $detail->kodeBarang,
@@ -1078,16 +1104,11 @@ class TransactionController extends Controller {
                         'qty_awal' => $realQty,
                         'qty_sisa' => $realQty,
                         'qty_booking' => 0,
-                        'harga_modal_satuan' => round(floatval($detail->harga_satuan), 2),
+                        'harga_modal_satuan' => round(floatval($detail->harga_satuan) / $multiplier, 2),
                         'idLokasi' => $idLokasiForBatch,
                         'lokasi_rak' => $lokasiRakForBatch,
                     ]);
                     DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $realQty);
-
-                    $multiplier = 1;
-                    if ($itemMaster && $detail->satuan_transaksi === $itemMaster->satuan_besar) {
-                        $multiplier = max(1, intval($itemMaster->rasio_konversi ?? 1));
-                    }
                     
                     $pricePerUom = floatval($detail->harga_satuan);
                     if ($pricePerUom > 0) {
