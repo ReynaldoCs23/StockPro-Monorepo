@@ -34,27 +34,59 @@ def get_current_stock(search_item: str = "") -> str:
         return f"Err DB: {e}"
 
 def get_financial_summary(start_date: str, end_date: str) -> str:
-    """Mengambil total nilai transaksi (pemasukan dan pengeluaran) dalam format Rupiah untuk rentang tanggal tertentu (YYYY-MM-DD). Gunakan JIKA user bertanya seputar PROFIT, PEMASUKAN, atau PENGELUARAN."""
+    """Mengambil ringkasan keuangan BERSIH (NET) dalam format Rupiah untuk rentang tanggal tertentu (YYYY-MM-DD). Gunakan JIKA user bertanya seputar PROFIT, PEMASUKAN, PENGELUARAN, LABA, atau ARUS KAS."""
     try:
         query = f"""
         SELECT 
-            CASE 
-                WHEN type = 'IN' THEN 'Pengeluaran Uang (Pembelian Stok)'
-                WHEN type = 'OUT' THEN 'Pemasukan Uang (Penjualan Distributor)'
-                WHEN type = 'MAKLOON_IN' THEN 'Pengeluaran Uang (Biaya Jasa Makloon)'
-                WHEN type = 'MAKLOON_OUT' THEN 'Pengeluaran Uang (Bahan Baku Makloon)'
-                WHEN type = 'RET' THEN 'Pemasukan Uang (Pengembalian Dana Return)'
-                ELSE type 
-            END as kategori_keuangan, 
-            SUM(totalTransaksi) as total_nilai_rp 
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
+            - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%%' THEN totalTransaksi ELSE 0 END), 0)
+            as penjualan_distributor_net,
+
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%%' THEN totalTransaksi ELSE 0 END), 0)
+            + COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%%' THEN totalTransaksi ELSE 0 END), 0)
+            - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
+            as total_belanja_stok_net,
+
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%%' THEN totalTransaksi ELSE 0 END), 0)
+            as pembelian_supplier,
+
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%%' THEN totalTransaksi ELSE 0 END), 0)
+            as biaya_makloon,
+
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
+            as bahan_baku_makloon,
+
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%%' THEN totalTransaksi ELSE 0 END), 0)
+            as retur_dari_customer,
+
+            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
+            as retur_ke_supplier
         FROM transactions 
-        WHERE DATE(tanggal) BETWEEN '{start_date}' AND '{end_date}' AND status = 'completed' 
-        GROUP BY type
+        WHERE DATE(tanggal) BETWEEN '{start_date}' AND '{end_date}' AND status = 'completed'
         """
         df = pd.read_sql(query, engine)
-        if df.empty or df['total_nilai_rp'].isnull().all():
+        if df.empty:
             return f"Tidak ada catatan dari {start_date} hingga {end_date}."
-        return df.to_csv(index=False)
+        
+        row = df.iloc[0]
+        penjualan_net = float(row['penjualan_distributor_net'])
+        belanja_net = float(row['total_belanja_stok_net'])
+        estimasi_laba = penjualan_net - belanja_net
+        margin = round((estimasi_laba / penjualan_net) * 100, 1) if penjualan_net > 0 else 0
+
+        summary = (
+            f"Periode: {start_date} s.d {end_date}\n"
+            f"Penjualan Distributor (Net, sudah dikurangi retur masuk): Rp {penjualan_net:,.2f}\n"
+            f"Total Belanja Stok (Net, sudah dikurangi retur keluar): Rp {belanja_net:,.2f}\n"
+            f"  - Pembelian dari Supplier: Rp {float(row['pembelian_supplier']):,.2f}\n"
+            f"  - Biaya Jasa Makloon: Rp {float(row['biaya_makloon']):,.2f}\n"
+            f"  - Bahan Baku Makloon: Rp {float(row['bahan_baku_makloon']):,.2f}\n"
+            f"  - Retur ke Supplier (pengurang): Rp {float(row['retur_ke_supplier']):,.2f}\n"
+            f"Retur dari Customer (pengurang penjualan): Rp {float(row['retur_dari_customer']):,.2f}\n"
+            f"Estimasi Laba Penjualan: Rp {estimasi_laba:,.2f}\n"
+            f"Margin Laba: {margin}%"
+        )
+        return summary
     except Exception as e:
         return f"Error database: {e}"
 
