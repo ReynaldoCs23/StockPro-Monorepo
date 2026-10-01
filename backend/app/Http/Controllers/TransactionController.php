@@ -913,6 +913,7 @@ class TransactionController extends Controller {
                   'idTransaksi_masuk' => $trace->batch->idTransaksi_masuk ?? null,
                   'tanggal_masuk' => $trace->batch->tanggal_masuk ?? null,
                   'qty_awal' => $trace->batch->qty_awal ?? null,
+                  'qty_sisa' => $trace->batch->qty_sisa ?? null,
                   'harga_modal_satuan' => $trace->batch->harga_modal_satuan ?? null,
                   'namaBarang' => $item ? $item->nama : null,
                   'lokasi_rak_nama' => $trace->batch->location ? $trace->batch->location->nama : null,
@@ -1179,8 +1180,16 @@ class TransactionController extends Controller {
                 }
             }
             
-            foreach ($itemReversals as $kodeBarang => $totalQty) {
-                DB::table('items')->where('kodeBarang', $kodeBarang)->increment('stok', $totalQty);
+            if (count($itemReversals) > 0) {
+                foreach ($itemReversals as $kodeBarang => $totalQty) {
+                    DB::table('items')->where('kodeBarang', $kodeBarang)->increment('stok', $totalQty);
+                }
+            } else {
+                // Fallback for older transactions that don't have batch details
+                $details = DB::table('transaction_details')->where('idTransaksi', $id)->get();
+                foreach ($details as $detail) {
+                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
+                }
             }
 
             DB::table('transaction_batch_details')->where('idTransaksi', $id)->delete();

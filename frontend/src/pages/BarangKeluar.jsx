@@ -596,6 +596,7 @@ export default function BarangKeluar() {
                                         <th className="uppercase tracking-wider py-3 px-4 text-slate-700 font-semibold text-xs">Lokasi Rak</th>
                                         <th className="uppercase tracking-wider py-3 px-4 text-slate-700 font-semibold text-xs">Tgl Masuk</th>
                                         <th className="uppercase tracking-wider py-3 px-4 text-slate-700 font-semibold text-xs text-right">Qty Awal</th>
+                                        <th className="uppercase tracking-wider py-3 px-4 text-slate-700 font-semibold text-xs text-right text-emerald-600">Sisa Batch</th>
                                         <th className="uppercase tracking-wider py-3 px-4 text-slate-700 font-semibold text-xs text-right">Qty Terpotong</th>
                                     </tr>
                                 </thead>
@@ -611,13 +612,14 @@ export default function BarangKeluar() {
                                             <td className="py-3 px-4 text-slate-600 text-xs font-semibold">{t.batch?.location?.nama || t.lokasi_rak_nama || <span className="text-gray-400 italic font-normal">Belum diset</span>}</td>
                                             <td className="py-3 px-4 text-slate-600 text-xs">{t.tanggal_masuk}</td>
                                             <td className="py-3 px-4 text-slate-600 text-right">{t.qty_awal}</td>
+                                            <td className="py-3 px-4 text-emerald-600 font-bold text-right">{t.qty_sisa !== undefined ? t.qty_sisa : '-'}</td>
                                             <td className="py-3 px-4 text-right font-bold text-indigo-700">{t.qty_diambil}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                                     <tr>
-                                        <td colSpan={6} className="py-3 px-4 text-right font-bold text-slate-700 text-xs uppercase">Total Qty Outbound</td>
+                                        <td colSpan={7} className="py-3 px-4 text-right font-bold text-slate-700 text-xs uppercase">Total Qty Outbound</td>
                                         <td className="py-3 px-4 text-right font-extrabold text-indigo-800 text-lg">{fifoTraceData.traces.reduce((sum, t) => sum + Number(t.qty_diambil), 0)}</td>
                                     </tr>
                                 </tfoot>

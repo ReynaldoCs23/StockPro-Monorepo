@@ -1,0 +1,8 @@
+{
+  "name": "stockpro-monorepo",
+  "version": "1.0.0",
+  "description": "Root configuration to run all servers concurrently in one terminal",
+  "scripts": {
+    "dev": "npx concurrently -c \"blue,magenta,yellow,cyan\" -n \"BACKEND,REVERB,REACT,AI-ENGN\" \"cd backend && php artisan serve\" \"cd backend && php artisan reverb:start --port=8090\" \"cd frontend && npm run dev\" \"cd ai-engine && venv\\Scripts\\activate && python chatbot.py\""
+  }
+}

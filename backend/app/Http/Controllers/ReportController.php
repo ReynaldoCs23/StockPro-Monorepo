@@ -62,8 +62,9 @@ class ReportController extends Controller
                     'sumber' => $row->entitas ?: $row->sumber_tujuan,
                     'keterangan' => $row->keterangan ?: 'Barang Masuk',
                     'qty' => (float) $row->qty,
-                    'nilai' => (float) $row->total_nilai,
-                    'item_desc' => $row->namaBarang
+                    'harga_satuan' => $row->harga_satuan ? (float) $row->harga_satuan : null,
+                    'total_nilai' => (float) $row->total_nilai,
+                    'nama_barang' => $row->namaBarang
                 ];
                 $totalQtyIn += (float) $row->qty;
                 $totalNilaiIn += (float) $row->total_nilai;
@@ -82,30 +83,32 @@ class ReportController extends Controller
                     'tujuan' => $row->entitas ?: $row->sumber_tujuan,
                     'keterangan' => $row->keterangan ?: 'Barang Keluar',
                     'qty' => (float) $row->qty,
-                    'nilai' => (float) $row->total_nilai,
-                    'item_desc' => $row->namaBarang
+                    'harga_satuan' => $row->harga_satuan ? (float) $row->harga_satuan : null,
+                    'total_nilai' => (float) $row->total_nilai,
+                    'nama_barang' => $row->namaBarang
                 ];
                 $totalQtyOut += (float) $row->qty;
                 $totalNilaiOut += (float) $row->total_nilai;
             }
             $outboundCount = count($outboundData);
 
-            // 3. RETURNS (Return)
             $returnsRaw = $baseQuery(['RET']);
             $returnsData = [];
             $totalQtyRet = 0;
             $totalNilaiRet = 0;
             foreach ($returnsRaw as $row) {
-                $tipeReturn = str_contains($row->sumber_tujuan, 'IN') ? 'Return Inbound' : 'Return Outbound';
+                $isRetIn = str_contains($row->idTransaksi, 'RET-IN');
+                $tipeReturn = $isRetIn ? 'Return Inbound' : 'Return Outbound';
                 $returnsData[] = [
                     'id_transaksi' => $row->idTransaksi,
                     'tanggal' => Carbon::parse($row->tanggal)->format('d/m/Y'),
                     'tipe' => $tipeReturn,
-                    'entitas' => $row->entitas ?: '-',
-                    'keterangan' => $row->keterangan ?: 'Return Barang',
+                    'asal_retur' => $row->entitas ?: '-',
+                    'kondisi' => 'Sesuai SOP Retur',
+                    'tindakan' => $row->keterangan ?: 'Return Barang',
                     'qty' => (float) $row->qty,
-                    'nilai' => (float) $row->total_nilai,
-                    'item_desc' => $row->namaBarang
+                    'estimasi_nilai' => (float) $row->total_nilai,
+                    'nama_barang' => $row->namaBarang
                 ];
                 $totalQtyRet += (float) $row->qty;
                 $totalNilaiRet += (float) $row->total_nilai;
@@ -113,10 +116,9 @@ class ReportController extends Controller
             $returnsCount = count($returnsData);
 
             // NET TOTALS
-            // Rumus: Inbound QTY - Outbound QTY + Return QTY (tergantung return in/out, tapi asumsikan net)
-            // Di sini kita hitung saldo masuk - keluar sederhana
-            $netMutasiQty = $totalQtyIn - $totalQtyOut;
-            $netMutasiNilai = $totalNilaiIn - $totalNilaiOut;
+            // Berdasarkan instruksi user: Inbound - Outbound - Total Retur
+            $netMutasiQty = $totalQtyIn - $totalQtyOut - $totalQtyRet;
+            $netMutasiNilai = $totalNilaiIn - $totalNilaiOut - $totalNilaiRet;
 
             return [
                 'periode' => [

@@ -9,6 +9,7 @@ use App\Models\ItemBatch;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Traits\HasSystemLogs;
+use App\Events\StokUpdated;
 
 class StockAdjustmentController extends Controller
 {
@@ -69,14 +70,26 @@ class StockAdjustmentController extends Controller
             }
 
             if ($type === 'subtraction') {
-                $stokTersedia = $item->stok - ($item->stok_booking ?? 0);
-                if ($stokTersedia < $quantity) {
-                    throw new \Exception("Stok tersedia tidak mencukupi untuk dikurangi. Sisa Tersedia: " . $stokTersedia);
+                $batchId = $request->batch_id; // optional
+                if ($batchId) {
+                    $batch = DB::table('item_batches')->where('id_batch', $batchId)->lockForUpdate()->first();
+                    if (!$batch) {
+                        throw new \Exception("Batch tidak ditemukan.");
+                    }
+                    $stokTersediaBatch = $batch->qty_sisa - $batch->qty_booking;
+                    if ($stokTersediaBatch < $quantity) {
+                        throw new \Exception("Stok di batch terpilih tidak mencukupi untuk dikurangi. Sisa Batch: " . $stokTersediaBatch);
+                    }
+                } else {
+                    $stokTersedia = $item->stok - ($item->stok_booking ?? 0);
+                    if ($stokTersedia < $quantity) {
+                        throw new \Exception("Stok tersedia tidak mencukupi untuk dikurangi. Sisa Tersedia: " . $stokTersedia);
+                    }
                 }
 
                 // Gunakan DB query builder langsung untuk memastikan stok terupdate secara persisten
                 DB::table('items')->where('kodeBarang', $kodeBarang)->decrement('stok', $quantity);
-                $this->consumeFifoBatches($adjustmentNumber, $kodeBarang, $quantity);
+                $this->consumeFifoBatches($adjustmentNumber, $kodeBarang, $quantity, $batchId);
             } else if ($type === 'addition') {
                 // Gunakan DB query builder langsung untuk memastikan stok terupdate secara persisten
                 DB::table('items')->where('kodeBarang', $kodeBarang)->increment('stok', $quantity);
@@ -110,6 +123,7 @@ class StockAdjustmentController extends Controller
             $this->writeLog(auth()->user()->namaLengkap ?? 'System', 'CREATE', 'stock_adjustments', $logDesc);
 
             DB::commit();
+            event(new StokUpdated("Penyesuaian Stok: $kodeBarang"));
 
             return response()->json([
                 'message' => 'Stock adjustment recorded successfully',
@@ -124,15 +138,20 @@ class StockAdjustmentController extends Controller
         }
     }
 
-    private function consumeFifoBatches($idTransaksi, $kodeBarang, $jumlah) {
+    private function consumeFifoBatches($idTransaksi, $kodeBarang, $jumlah, $batchId = null) {
         $remaining = $jumlah;
-        $batches = DB::table('item_batches')
+        $query = DB::table('item_batches')
             ->where('kodeBarang', $kodeBarang)
             ->whereRaw('(qty_sisa - qty_booking) > 0')
             ->orderBy('tanggal_masuk', 'asc')
             ->orderBy('id_batch', 'asc')
-            ->lockForUpdate()
-            ->get();
+            ->lockForUpdate();
+            
+        if ($batchId) {
+            $query->where('id_batch', $batchId);
+        }
+        
+        $batches = $query->get();
 
         foreach($batches as $batch) {
             if($remaining <= 0) break;

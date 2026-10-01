@@ -9,7 +9,7 @@ export default function AIAssistant() {
     const token = localStorage.getItem('auth_token'); // for auth header if needed
 
     const [messages, setMessages] = useState([
-        { role: 'ai', text: "Halo! Saya Asisten AI PT Mara Jaya Dewi Sakti. Ada data stok, return galon, atau performa vendor yang ingin Anda cari tahu hari ini?" }
+        { role: 'ai', text: "Selamat datang di Pusat Analisis Data StockPro. Saya adalah Asisten AI untuk PT Mara Jaya Dewi Sakti. Bagaimana saya dapat membantu Anda menganalisis data stok, mutasi barang, atau metrik keuangan hari ini?" }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -73,19 +73,6 @@ export default function AIAssistant() {
 
     return (
         <div className="-m-4 sm:-m-8 flex flex-col h-[calc(100vh-64px)] bg-white print:hidden">
-            {/* HEADER */}
-            <div className="flex items-center gap-3 px-6 py-4 bg-white border-b border-slate-100 z-10 shrink-0">
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
-                    <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                    <h1 className="text-lg font-bold text-slate-800 tracking-tight">Asisten AI Operasional</h1>
-                    <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Online & Siap Membantu
-                    </p>
-                </div>
-            </div>
-
             {/* AREA OBROLAN (SCROLLABLE) */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth bg-slate-50/30">
                 <div className="max-w-3xl mx-auto w-full space-y-5">

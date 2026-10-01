@@ -27,11 +27,14 @@ export default function StockAdjustment() {
     const [isModalOpen, setModalOpen] = useState(false);
     const [toast, setToast] = useState(null);
 
+    const [availableBatches, setAvailableBatches] = useState([]);
+
     const [formData, setFormData] = useState({
         item_id: '',
         adjustment_type: 'addition',
         quantity: '',
-        reason: ''
+        reason: '',
+        batch_id: ''
     });
 
     const fetchAdjustments = () => {
@@ -57,12 +60,28 @@ export default function StockAdjustment() {
         fetchAdjustments();
     }, [currentPage, isApiOffline, startDate, endDate]);
 
+    useEffect(() => {
+        if (formData.item_id && formData.adjustment_type === 'subtraction' && !isApiOffline) {
+            apiCall(`/item-batches/available?kodeBarang=${formData.item_id}`)
+                .then(data => {
+                    setAvailableBatches(data || []);
+                    // Reset batch_id if not in list
+                    if (formData.batch_id && !data.find(b => b.id_batch === formData.batch_id)) {
+                        setFormData(prev => ({...prev, batch_id: ''}));
+                    }
+                });
+        } else {
+            setAvailableBatches([]);
+        }
+    }, [formData.item_id, formData.adjustment_type, isApiOffline]);
+
     const openAddModal = () => {
         setFormData({
             item_id: '',
             adjustment_type: 'addition',
             quantity: '',
-            reason: ''
+            reason: '',
+            batch_id: ''
         });
         setModalOpen(true);
     };
@@ -265,6 +284,32 @@ export default function StockAdjustment() {
                                     required
                                 />
                             </div>
+
+                            {formData.adjustment_type === 'subtraction' && (
+                                <div className="w-full">
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Pilih Batch (Opsional)</label>
+                                    <select 
+                                        className={`w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-colors ${(!formData.item_id || availableBatches.length === 0) ? 'bg-slate-100 cursor-not-allowed text-slate-400' : 'bg-slate-50 focus:bg-white text-slate-700'}`}
+                                        value={formData.batch_id}
+                                        onChange={(e) => setFormData({...formData, batch_id: e.target.value})}
+                                        disabled={!formData.item_id || availableBatches.length === 0}
+                                    >
+                                        {!formData.item_id ? (
+                                            <option value="">-- Silakan pilih barang dulu --</option>
+                                        ) : availableBatches.length === 0 ? (
+                                            <option value="">-- Tidak ada batch tersedia --</option>
+                                        ) : (
+                                            <option value="">-- Otomatis (FIFO Tertua) --</option>
+                                        )}
+                                        {availableBatches.map(b => (
+                                            <option key={b.id_batch} value={b.id_batch}>
+                                                {b.id_batch} (Sisa: {b.qty_sisa - b.qty_booking}) - Masuk: {b.tanggal_masuk}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-slate-500 mt-1">Biarkan kosong jika ingin memotong otomatis dari batch tertua secara FIFO.</p>
+                                </div>
+                            )}
                         </div>
 
                         <div className="col-span-1 md:col-span-2">
