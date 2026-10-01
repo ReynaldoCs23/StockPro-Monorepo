@@ -8,7 +8,8 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
     useEffect(() => {
         if (data) {
             apiCall('/company-profile').then(res => {
-                if (res.data) setLiveCompanyProfile(res.data);
+                if (res.nama) setLiveCompanyProfile(res);
+                else if (res.data) setLiveCompanyProfile(res.data);
             }).catch(() => { });
         }
     }, [data]);

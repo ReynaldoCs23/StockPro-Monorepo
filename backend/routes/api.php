@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/boms', [BomController::class, 'index']);
     Route::post('/boms', [BomController::class, 'store'])->middleware('permission:create_makloon');
     Route::delete('/boms/{id_bom}', [BomController::class, 'destroy'])->middleware('permission:create_makloon');
+    Route::get('/bom/{kode_produk}/preview', [BomController::class, 'getBomPreview']);
 
     // ==========================================
     // 3. API PRODUKSI ATOMIK

@@ -1152,6 +1152,7 @@ class TransactionController extends Controller {
 
         \Illuminate\Support\Facades\Cache::flush();
         event(new StokUpdated("Approval Transaksi $id"));
+        $this->writeLog(auth()->user()->namaLengkap ?? 'System', 'UPDATE', 'transactions', "Approve Transaksi Draft $id");
 
         return $result;
     }
@@ -1200,6 +1201,7 @@ class TransactionController extends Controller {
 
         \Illuminate\Support\Facades\Cache::flush();
         event(new StokUpdated("Void Transaksi $id"));
+        $this->writeLog(auth()->user()->namaLengkap ?? 'System', 'UPDATE', 'transactions', "Void Transaksi $id");
 
         return $result;
     }

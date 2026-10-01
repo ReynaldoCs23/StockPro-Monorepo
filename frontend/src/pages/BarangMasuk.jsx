@@ -290,6 +290,7 @@ export default function BarangMasuk() {
         setIsProcessing(true);
         try {
             await apiCall(`/transaction/${row.idTransaksi}/approve`, 'POST');
+            await fetchTransactions(); // Update state agar data invoice/faktur tidak stale
             setToast({ message: 'Transaksi berhasil di-approve!', type: 'success' });
             setConfirmAction(null);
         } catch(e) { setToast({ message: e.message, type: 'error' }); }

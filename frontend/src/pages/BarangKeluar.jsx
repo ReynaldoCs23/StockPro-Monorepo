@@ -62,27 +62,33 @@ export default function BarangKeluar() {
         setCurrentPage(1);
     }, [filterType, filterStart, filterEnd]);
 
-    useEffect(() => {
+    const fetchOutboundTransactions = async () => {
         if (!isApiOffline) {
             setIsProcessing(true);
             const safeStart = getLocalYYYYMMDD(new Date(filterStart));
             const safeEnd = getLocalYYYYMMDD(new Date(filterEnd));
-            apiCall(`/transactions?category=outbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`)
-                .then(data => {
-                    if (data && data.data) {
-                        setOutbound(Array.isArray(data.data) ? data.data : (data.data.data || []));
-                        setLastPage(data.last_page || 1);
-                        if (data.summary) {
-                            setGlobalSummary(data.summary);
-                        }
-                    } else {
-                        setOutbound(Array.isArray(data) ? data : []);
-                        setLastPage(1);
+            try {
+                const data = await apiCall(`/transactions?category=outbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`);
+                if (data && data.data) {
+                    setOutbound(Array.isArray(data.data) ? data.data : (data.data.data || []));
+                    setLastPage(data.last_page || 1);
+                    if (data.summary) {
+                        setGlobalSummary(data.summary);
                     }
-                    setIsProcessing(false);
-                })
-                .catch(() => setIsProcessing(false));
+                } else {
+                    setOutbound(Array.isArray(data) ? data : []);
+                    setLastPage(1);
+                }
+            } catch (e) {
+                // handle error
+            } finally {
+                setIsProcessing(false);
+            }
         }
+    };
+
+    useEffect(() => {
+        fetchOutboundTransactions();
     }, [filterType, filterStart, filterEnd, currentPage]);
 
     const isMakloonOut = formData.tujuan === 'Kirim ke Vendor Makloon';
@@ -270,6 +276,7 @@ export default function BarangKeluar() {
         setIsProcessing(true);
         try {
             await apiCall(`/transaction/${row.idTransaksi}/approve`, 'POST');
+            await fetchOutboundTransactions();
             setToast({ message: 'Transaksi berhasil di-approve!', type: 'success' });
             setConfirmAction(null);
         } catch(e) { setToast({ message: e.message, type: 'error' }); }
@@ -280,6 +287,7 @@ export default function BarangKeluar() {
         setIsProcessing(true);
         try {
             await apiCall(`/transaction/${row.idTransaksi}/void`, 'POST');
+            await fetchOutboundTransactions();
             setToast({ message: 'Transaksi berhasil dibatalkan!', type: 'success' });
             setConfirmAction(null);
         } catch(e) { setToast({ message: e.message, type: 'error' }); }

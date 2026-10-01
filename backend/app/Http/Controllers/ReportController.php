@@ -8,6 +8,8 @@ use Carbon\Carbon;
 
 class ReportController extends Controller
 {
+    use \App\Traits\HasSystemLogs;
+
     public function getMutasiReport(Request $request)
     {
         $startFilter = $request->get('start_date', now('Asia/Makassar')->subDays(30)->format('Y-m-d'));
@@ -98,7 +100,13 @@ class ReportController extends Controller
             $totalNilaiRet = 0;
             foreach ($returnsRaw as $row) {
                 $isRetIn = str_contains($row->idTransaksi, 'RET-IN');
+                $isPengembalianGalon = ($row->sumber_tujuan === 'pengembalian_galon');
+                
                 $tipeReturn = $isRetIn ? 'Return Inbound' : 'Return Outbound';
+                if ($isPengembalianGalon) {
+                    $tipeReturn = 'Pengembalian Galon (Kosong)';
+                }
+
                 $returnsData[] = [
                     'id_transaksi' => $row->idTransaksi,
                     'tanggal' => Carbon::parse($row->tanggal)->format('d/m/Y'),
@@ -110,8 +118,12 @@ class ReportController extends Controller
                     'estimasi_nilai' => (float) $row->total_nilai,
                     'nama_barang' => $row->namaBarang
                 ];
-                $totalQtyRet += (float) $row->qty;
-                $totalNilaiRet += (float) $row->total_nilai;
+                
+                // HANYA hitung RET-IN dan BUKAN pengembalian galon
+                if ($isRetIn && !$isPengembalianGalon) {
+                    $totalQtyRet += (float) $row->qty;
+                    $totalNilaiRet += (float) $row->total_nilai;
+                }
             }
             $returnsCount = count($returnsData);
 
@@ -152,6 +164,8 @@ class ReportController extends Controller
                 'returns_data' => $returnsData
             ];
         });
+
+        $this->writeLog(auth()->user()->namaLengkap ?? 'System', 'READ', 'reports', "Mencetak/Mengakses Laporan Mutasi periode {$startFilter} s.d {$endFilter}");
 
         return response()->json($responseData);
     }

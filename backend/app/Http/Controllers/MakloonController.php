@@ -59,6 +59,9 @@ class MakloonController extends Controller
                 'status' => 'Pending'
             ]);
 
+            $logUser = $request->log_user ?? auth()->user()->namaLengkap ?? 'System';
+            $this->writeLog($logUser, 'CREATE', 'makloon_orders', "Membuat Work Order Makloon Baru: {$woNumber} untuk produk {$request->kode_produk} sejumlah {$request->target_qty}");
+
             return response()->json(['message' => 'Makloon Order berhasil dibuat', 'data' => $order], 201);
         } catch (\Exception $e) {
             \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());

@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class BomController extends Controller
 {
+    use \App\Traits\HasSystemLogs;
+
     // Mengambil semua resep BOM
     public function index()
     {
@@ -77,6 +79,11 @@ class BomController extends Controller
             }
 
             DB::commit();
+            
+            $logAction = $existingBom ? 'UPDATE' : 'CREATE';
+            $logMessage = $existingBom ? "Memperbarui resep BOM untuk produk: {$request->kode_produk}" : "Membuat resep BOM baru untuk produk: {$request->kode_produk}";
+            $this->writeLog(auth()->user()->namaLengkap ?? 'System', $logAction, 'boms', $logMessage);
+
             return response()->json(['message' => 'Resep BOM berhasil disimpan/diperbarui!'], 201);
 
         } catch (\Exception $e) {
@@ -117,6 +124,9 @@ class BomController extends Controller
             DB::table('boms')->where('id_bom', $id_bom)->delete();
 
             DB::commit();
+            
+            $this->writeLog(auth()->user()->namaLengkap ?? 'System', 'DELETE', 'boms', "Menghapus resep BOM untuk produk: {$bom->kode_produk}");
+            
             return response()->json(['success' => true, 'message' => 'Resep BOM berhasil dihapus!'], 200);
 
         } catch (\Exception $e) {
@@ -127,5 +137,30 @@ class BomController extends Controller
                 'message' => 'Maaf, terjadi kesalahan saat menghapus data. Silakan coba lagi.',
             ], 500);
         }
+    }
+
+    public function getBomPreview($kode_produk)
+    {
+        $bom = DB::table('boms')->where('kode_produk', $kode_produk)->first();
+        
+        if (!$bom) {
+            return response()->json(['message' => 'Resep BOM tidak ditemukan', 'data' => []], 404);
+        }
+
+        $details = DB::table('bom_details')
+            ->join('items', 'bom_details.kode_bahan_baku', '=', 'items.kodeBarang')
+            ->where('bom_details.id_bom', $bom->id_bom)
+            ->select(
+                'bom_details.kode_bahan_baku as kode_bahan_baku',
+                'items.nama as nama_bahan',
+                'bom_details.jumlah_per_unit as qty_dibutuhkan',
+                'items.stok as stok_aktual'
+            )
+            ->get();
+
+        return response()->json([
+            'kode_produk' => $kode_produk,
+            'bahan_baku' => $details
+        ]);
     }
 }

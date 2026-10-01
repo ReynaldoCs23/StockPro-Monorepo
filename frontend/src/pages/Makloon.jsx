@@ -31,6 +31,8 @@ export default function Makloon() {
     const [vendor, setVendor] = useState('');
     const [produksiProduk, setProduksiProduk] = useState('');
     const [jumlahProduk, setJumlahProduk] = useState('');
+    const [bomPreview, setBomPreview] = useState(null);
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
     const [toast, setToast] = useState(null);
     const [errorMsg, setErrorMsg] = useState('');
@@ -138,6 +140,23 @@ export default function Makloon() {
     // ==========================================
     // LOGIKA BAGIAN 2: MAKLOON ORDERS
     // ==========================================
+    const handleProdukChange = async (e) => {
+        const val = e.target.value;
+        setProduksiProduk(val);
+        setBomPreview(null);
+        if (val && !isApiOffline) {
+            setIsLoadingPreview(true);
+            try {
+                const res = await apiCall(`/bom/${val}/preview`);
+                setBomPreview(res.bahan_baku || []);
+            } catch (err) {
+                setBomPreview([]);
+            } finally {
+                setIsLoadingPreview(false);
+            }
+        }
+    };
+
     const handleCreateOrder = async (e) => {
         e.preventDefault();
         setErrorMsg(''); setSuccessMsg('');
@@ -416,7 +435,7 @@ export default function Makloon() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-600 mb-2">Produk Jadi</label>
-                                    <select required className="w-full p-3.5 border border-slate-200 rounded-xl font-bold text-slate-800 bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition-shadow:border-blue-500:ring-blue-500" value={produksiProduk} onChange={e => setProduksiProduk(e.target.value)}>
+                                    <select required className="w-full p-3.5 border border-slate-200 rounded-xl font-bold text-slate-800 bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition-shadow:border-blue-500:ring-blue-500" value={produksiProduk} onChange={handleProdukChange}>
                                         <option value="">-- Pilih Produk --</option>
                                         {produkJadiOptions.map(i => {
                                             const hasBom = boms.some(b => b.kode_produk === i.kodeBarang);
@@ -425,6 +444,31 @@ export default function Makloon() {
                                             </option>
                                         })}
                                     </select>
+
+                                    {isLoadingPreview && <div className="mt-2 text-xs text-indigo-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Memuat Resep...</div>}
+                                    {bomPreview && !isLoadingPreview && (
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mt-3 max-h-48 overflow-y-auto shadow-inner">
+                                            <h4 className="text-[10px] font-black text-slate-400 mb-2 border-b border-slate-200 pb-2 uppercase tracking-wider">Preview Bahan Baku (Resep per Unit):</h4>
+                                            <div className="space-y-2.5 mt-2">
+                                                {bomPreview.map((bahan, idx) => {
+                                                    const totalDibutuhkan = bahan.qty_dibutuhkan * (jumlahProduk || 1);
+                                                    const isKurang = bahan.stok_aktual < totalDibutuhkan;
+                                                    return (
+                                                        <div key={idx} className="flex justify-between items-start text-xs border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                                                            <span className="font-bold text-slate-700 leading-tight mr-2" title={bahan.nama_bahan}>{bahan.nama_bahan}</span>
+                                                            <div className="flex flex-col items-end shrink-0">
+                                                                <span className="text-slate-500 text-[10px] font-bold">Dibutuhkan: {totalDibutuhkan}</span>
+                                                                <span className={isKurang ? "text-red-600 font-black flex items-center gap-1" : "text-emerald-600 font-bold"}>
+                                                                    Sisa: {bahan.stok_aktual} 
+                                                                    {isKurang && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded-md text-[8px] uppercase tracking-wider">Stok Kurang</span>}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-600 mb-2">Target Qty</label>
