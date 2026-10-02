@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Send, Loader2, Sparkles, User } from '../components/icons/Icons';
+import { Send, Loader2, Sparkles, User, Copy, Download } from '../components/icons/Icons';
 import useAppStore from '../store/useAppStore';
 
 export default function AIAssistant() {
@@ -70,7 +70,22 @@ export default function AIAssistant() {
             handleSend();
         }
     };
+    const handleCopy = (text) => {
+        navigator.clipboard.writeText(text);
+        // Bisa tambahkan toast notifikasi jika ada fungsi toast
+    };
 
+    const handleDownload = (text) => {
+        const blob = new Blob([text], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `AI_Response_${new Date().toISOString().split('T')[0]}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
     return (
         <div className="-m-4 sm:-m-8 flex flex-col h-[calc(100vh-64px)] bg-white print:hidden">
             {/* AREA OBROLAN (SCROLLABLE) */}
@@ -95,23 +110,43 @@ export default function AIAssistant() {
                                     )}
                                 </div>
 
-                                {/* Chat Bubble */}
-                                <div className={`px-5 py-3.5 rounded-2xl text-[14px] leading-relaxed ${
-                                    isUser 
-                                    ? 'bg-blue-600 text-white rounded-tr-sm' 
-                                    : 'bg-white text-slate-700 border border-slate-200 rounded-tl-sm shadow-sm'
-                                }`}>
-                                    <ReactMarkdown
-                                        components={{
-                                            strong: ({node, ...props}) => <span className="font-bold" {...props} />,
-                                            p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                                            ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
-                                            ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
-                                            li: ({node, ...props}) => <li className="" {...props} />
-                                        }}
-                                    >
-                                        {msg.text}
-                                    </ReactMarkdown>
+                                {/* Chat Bubble & Actions */}
+                                <div className="flex flex-col gap-2 w-full">
+                                    <div className={`px-5 py-3.5 rounded-2xl text-[14px] leading-relaxed ${
+                                        isUser 
+                                        ? 'bg-blue-600 text-white rounded-tr-sm' 
+                                        : 'bg-white text-slate-700 border border-slate-200 rounded-tl-sm shadow-sm'
+                                    }`}>
+                                        <ReactMarkdown
+                                            components={{
+                                                strong: ({node, ...props}) => <span className="font-bold" {...props} />,
+                                                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
+                                                ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
+                                                li: ({node, ...props}) => <li className="" {...props} />
+                                            }}
+                                        >
+                                            {msg.text}
+                                        </ReactMarkdown>
+                                    </div>
+
+                                    {/* Action Buttons (Only for AI) */}
+                                    {!isUser && (
+                                        <div className="flex items-center gap-2 px-1">
+                                            <button 
+                                                onClick={() => handleCopy(msg.text)}
+                                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                                            >
+                                                <Copy className="w-3.5 h-3.5" /> Salin
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDownload(msg.text)}
+                                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                                            >
+                                                <Download className="w-3.5 h-3.5" /> Unduh
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
