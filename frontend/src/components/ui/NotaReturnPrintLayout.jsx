@@ -128,9 +128,13 @@ export default function NotaReturnPrintLayout({ data, onClose, currentUser, type
     // Calculate totals from items
     const itemsList = data.items && data.items.length > 0 ? data.items : [{ kodeBarang: data.kodeBarang, namaBarang: data.namaBarang, jumlah: data.jumlah, harga_satuan: data.harga_modal_satuan || 0 }];
     const subtotal = showPriceColumn ? itemsList.reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_satuan || it.harga_modal_satuan || 0)), 0) : 0;
+    const potonganHarga = Number(data.potongan_harga || 0);
+    const uangMuka = Number(data.uang_muka || 0);
+    const ppnbm = Number(data.ppnbm || 0);
+    const dpp = Number(data.dpp || (subtotal - potonganHarga - uangMuka));
     const pajakPersen = Number(data.pajak_persen || 0);
-    const pajakNominal = Number(data.pajak_nominal || (subtotal * pajakPersen / 100));
-    const grandTotal = Number(data.totalTransaksi) || (subtotal + pajakNominal);
+    const pajakNominal = Number(data.pajak_nominal || (dpp * pajakPersen / 100));
+    const grandTotal = Number(data.totalTransaksi) || (dpp + pajakNominal + ppnbm);
 
     // Signatures
     let sig1Label = 'Dikirim Oleh', sig1Name = isPembelian ? (data.namaSupplier || 'Supplier') : 'Admin Gudang';
@@ -365,8 +369,24 @@ export default function NotaReturnPrintLayout({ data, onClose, currentUser, type
                                 <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(subtotal)}</td>
                             </tr>
                             <tr>
+                                <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="6">Dikurangi Potongan Harga</td>
+                                <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(potonganHarga)}</td>
+                            </tr>
+                            <tr>
+                                <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="6">Dikurangi Uang Muka</td>
+                                <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(uangMuka)}</td>
+                            </tr>
+                            <tr>
+                                <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="6">Dasar Pengenaan Pajak (DPP)</td>
+                                <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(dpp)}</td>
+                            </tr>
+                            <tr>
                                 <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="6">Tax / PPN ({pajakPersen}%)</td>
                                 <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(pajakNominal)}</td>
+                            </tr>
+                            <tr>
+                                <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="6">Pajak Penjualan Atas Barang Mewah (PPnBM)</td>
+                                <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(ppnbm)}</td>
                             </tr>
                             <tr>
                                 <td className="border border-black py-2 px-3 font-bold text-right" colSpan="6">GRAND TOTAL</td>

@@ -123,16 +123,19 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
 
     // Calculations
     const hargaJualTotal = itemsList.reduce((sum, item) => sum + (Number(item.jumlah_transaksi || item.jumlah || 0) * Number(item.harga_satuan || item.harga_modal_satuan || 0)), 0);
-    const potonganHarga = 0;
-    const dpp = hargaJualTotal - potonganHarga;
+    const potonganHarga = Number(data.potongan_harga || 0);
+    const uangMuka = Number(data.uang_muka || 0);
+    const ppnbm = Number(data.ppnbm || 0);
+    const dpp = Number(data.dpp || (hargaJualTotal - potonganHarga - uangMuka));
     const pajakPersen = Number(data.pajak_persen || 0);
     const ppn = Number(data.pajak_nominal || 0) || (dpp * pajakPersen / 100);
-    const grandTotal = dpp + ppn;
+    // grandTotal from DB is best, fallback to calculation if missing
+    const grandTotal = data.totalTransaksi ? Number(data.totalTransaksi) : (dpp + ppn + ppnbm);
 
     return (
         <div className="fixed inset-0 print:static print:inset-auto z-[9999] bg-slate-50/50 backdrop-blur-sm overflow-y-auto print:overflow-visible flex print:block justify-center p-4 sm:p-8 print:m-0 print:p-0 print:w-[190mm] print:max-w-[190mm] print:mx-auto max-w-4xl mx-auto print:bg-white print-only-layout text-black" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
             <div id="printable-faktur" className="faktur-container print-safe-wrapper bg-white p-10 shadow-2xl relative rounded-xl mx-auto text-black print:w-[190mm] print:max-w-[190mm] print:mx-auto print:p-0 print:shadow-none print:rounded-none print:overflow-visible" style={{ minHeight: '297mm' }}>
-                
+
                 {/* Action Buttons - hidden on print */}
                 <div className="absolute top-4 right-4 flex gap-2 print:hidden">
                     <button onClick={handlePrint} className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold hover:bg-slate-800 border border-b shadow-sm">🖨️ Cetak</button>
@@ -145,7 +148,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                     <p className="text-sm mt-2">Nomor Faktur: {data.idTransaksi}</p>
                     <p className="text-sm mt-0.5">Tanggal Faktur: {new Date(data.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                 </div>
-                
+
                 {/* Info Section - PKP and Pembeli (Vertically Stacked like Nota Retur) */}
                 <div className="w-full flex flex-col gap-4 mb-6 text-sm print:flex-col print:gap-4 print:w-full print:mb-6 print:break-inside-avoid">
                     <div className="w-full border border-black p-3 print:w-full print:box-border">
@@ -188,7 +191,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                                 <tr key={idx}>
                                     <td className="border border-black py-2 px-3 text-center">{idx + 1}</td>
                                     <td className="border border-black py-2 px-3 font-mono">{item.kodeBarang}</td>
-                                    <td className="border border-black py-2 px-3">{item.namaBarang || item.item_nama || '-'} <br/><span className="text-xs text-slate-600">({item.jumlah_transaksi || item.jumlah} {item.satuan_transaksi || 'Pcs'} x {formatRp(unitPrice)})</span></td>
+                                    <td className="border border-black py-2 px-3">{item.namaBarang || item.item_nama || '-'} <br /><span className="text-xs text-slate-600">({item.jumlah_transaksi || item.jumlah} {item.satuan_transaksi || 'Pcs'} x {formatRp(unitPrice)})</span></td>
                                     <td className="border border-black py-2 px-3 text-right font-semibold">{formatRp(amount)}</td>
                                 </tr>
                             );
@@ -196,12 +199,28 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                     </tbody>
                     <tfoot className="avoid-break">
                         <tr>
-                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Harga Jual / Penggantian</td>
+                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Harga Jual / Penggantian / Uang Muka / Termin </td>
                             <td className="border border-black py-2 px-3 text-right font-semibold print:text-black text-blue-700 w-[25%]">{formatRp(hargaJualTotal)}</td>
                         </tr>
                         <tr>
-                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">PPN ({pajakPersen}%)</td>
+                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Dikurangi Potongan Harga</td>
+                            <td className="border border-black py-2 px-3 text-right font-semibold print:text-black w-[25%]">{formatRp(potonganHarga)}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Dikurangi Uang Muka Yang Telah Diterima </td>
+                            <td className="border border-black py-2 px-3 text-right font-semibold print:text-black w-[25%]">{formatRp(uangMuka)}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Dasar Pengenaan Pajak (DPP)</td>
+                            <td className="border border-black py-2 px-3 text-right font-semibold print:text-black w-[25%]">{formatRp(dpp)}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Jumlah PPN ({pajakPersen}%)</td>
                             <td className="border border-black py-2 px-3 text-right font-semibold print:text-black text-amber-700 w-[25%]">{formatRp(ppn)}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-black py-2 px-3 font-semibold text-right" colSpan="3">Jumlah PPnBM (Pajak Penjualan Atas Barang Mewah)</td>
+                            <td className="border border-black py-2 px-3 text-right font-semibold print:text-black w-[25%]">{formatRp(ppnbm)}</td>
                         </tr>
                         <tr>
                             <td className="border border-black py-2 px-3 font-bold text-right bg-slate-50 print:bg-transparent" colSpan="3">GRAND TOTAL</td>

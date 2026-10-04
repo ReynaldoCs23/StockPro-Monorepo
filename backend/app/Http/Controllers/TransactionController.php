@@ -639,7 +639,8 @@ class TransactionController extends Controller {
     // LOGIKA INTI DATABASE: DIUBAH KE MULTI-ITEM
     // ========================================================
     private function applyTransaction($type, $payload) {
-        $jenisReturnOrTujuan = $payload['jenisReturn'] ?? ($payload['sumber_tujuan'] ?? ($payload['tujuan'] ?? ($payload['sumber'] ?? null)));
+        return DB::transaction(function () use ($type, $payload) {
+            $jenisReturnOrTujuan = $payload['jenisReturn'] ?? ($payload['sumber_tujuan'] ?? ($payload['tujuan'] ?? ($payload['sumber'] ?? null)));
 
         $isScheduled = Carbon::parse($payload['tanggal'])->startOfDay()->gt(Carbon::today());
         $status = $isScheduled ? 'scheduled' : 'completed';
@@ -647,6 +648,25 @@ class TransactionController extends Controller {
             $status = $isScheduled ? 'scheduled' : 'draft';
         }
         $execution_date = $isScheduled ? Carbon::parse($payload['tanggal'])->format('Y-m-d') : null;
+
+        // Calculate DPP if not provided
+        $subtotal_for_dpp = $payload['subtotal'] ?? 0;
+        if (empty($subtotal_for_dpp) && isset($payload['items'])) {
+            foreach ($payload['items'] as $it) {
+                $q = $it['jumlah_transaksi'] ?? $it['jumlah'] ?? 0;
+                $p = $it['harga_satuan'] ?? $it['hargaBeli'] ?? $it['hargaJual'] ?? $it['harga_modal_satuan'] ?? 0;
+                $subtotal_for_dpp += ($q * $p);
+            }
+        }
+        
+        $potongan_harga = $payload['potongan_harga'] ?? 0;
+        $uang_muka = $payload['uang_muka'] ?? 0;
+        $ppnbm = $payload['ppnbm'] ?? 0;
+        $dpp = $payload['dpp'] ?? 0;
+        
+        if (empty($dpp) || $dpp == 0) {
+            $dpp = $subtotal_for_dpp * (11 / 12);
+        }
 
         // 1. Simpan Header ke tabel transactions
         DB::table('transactions')->insert([
@@ -658,6 +678,10 @@ class TransactionController extends Controller {
             'sumber_tujuan' => $jenisReturnOrTujuan,
             'entitas' => $payload['namaSupplier'] ?? ($payload['namaPembeli'] ?? null),
             'totalTransaksi' => $payload['totalTransaksi'] ?? 0,
+            'potongan_harga' => $potongan_harga,
+            'uang_muka' => $uang_muka,
+            'dpp' => $dpp,
+            'ppnbm' => $ppnbm,
             'pajak_persen' => $payload['pajak_persen'] ?? 0,
             'pajak_nominal' => $payload['pajak_nominal'] ?? 0,
             'idReferensi' => $payload['idReferensi'] ?? null,
@@ -886,6 +910,7 @@ class TransactionController extends Controller {
                     'totalTransaksi' => $totalTransaksi,
                 ]);
         }
+        });
     }
 
     public function fifoTrace($id)
@@ -976,6 +1001,7 @@ class TransactionController extends Controller {
     }
 
     private function revertTransaction($idTransaksi) {
+        return DB::transaction(function () use ($idTransaksi) {
         $header = DB::table('transactions')->where('idTransaksi', $idTransaksi)->first();
         if(!$header) throw new \Exception("Transaksi tidak ditemukan di database.");
         $details = DB::table('transaction_details')->where('idTransaksi', $idTransaksi)->get();
@@ -1044,6 +1070,7 @@ class TransactionController extends Controller {
         DB::table('transaction_batch_details')->where('idTransaksi', $idTransaksi)->delete();
         DB::table('transaction_details')->where('idTransaksi', $idTransaksi)->delete();
         DB::table('transactions')->where('idTransaksi', $idTransaksi)->delete();
+        });
     }
 
     private function resolveLokasiasal($item, $payload)

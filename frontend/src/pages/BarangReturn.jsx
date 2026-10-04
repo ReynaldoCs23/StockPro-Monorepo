@@ -58,6 +58,12 @@ export default function BarangReturn() {
     const [selectedItems, setSelectedItems] = useState([]);
     const [availableBatches, setAvailableBatches] = useState([]);
 
+    // Tax fields
+    const [pajakPersen, setPajakPersen] = useState(0);
+    const [potonganHarga, setPotonganHarga] = useState(0);
+    const [uangMuka, setUangMuka] = useState(0);
+    const [ppnbm, setPpnbm] = useState(0);
+
     React.useEffect(() => {
         if (flowType === 'RET_OUT') {
             apiCall('/item-batches/available').then(setAvailableBatches).catch(() => setAvailableBatches([]));
@@ -110,6 +116,10 @@ export default function BarangReturn() {
         setKeterangan('');
         setRefItems([]);
         setSelectedItems([]);
+        setPajakPersen(0);
+        setPotonganHarga(0);
+        setUangMuka(0);
+        setPpnbm(0);
         setErrorMsg('');
         setModalOpen(true);
     };
@@ -189,6 +199,11 @@ export default function BarangReturn() {
             keterangan,
             namaPembeli: refEntity,
             sumber_tujuan: jenisReturn,
+            pajak_persen: pajakPersen,
+            potongan_harga: potonganHarga,
+            uang_muka: uangMuka,
+            ppnbm: ppnbm,
+            dpp: 0, // In return we can keep it 0 or calculate if needed
             items: validItems.map(it => ({
                 kodeBarang: it.kodeBarang,
                 namaBarang: it.namaBarang,
@@ -568,6 +583,24 @@ export default function BarangReturn() {
                             </div>
                         </div>
                     )}
+                    
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
+                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
+                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
+                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                            </div>
+                        </div>
+                    </div>
+
                     <button disabled={isProcessing} className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl mt-4 transition-all flex justify-center items-center shadow-lg shadow-rose-200">
                         {isProcessing ? "Memproses..." : "Konfirmasi Return Keluar (Kurangi Stok)"}
                     </button>
@@ -691,6 +724,24 @@ export default function BarangReturn() {
                             </div>
                         </div>
                     )}
+                    
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
+                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
+                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
+                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                            </div>
+                        </div>
+                    </div>
+
                     <button disabled={isProcessing} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl mt-4 transition-all flex justify-center items-center shadow-lg shadow-emerald-200">
                         {isProcessing ? "Memproses..." : "Konfirmasi Return Masuk (Tambah Stok)"}
                     </button>

@@ -13,7 +13,18 @@ use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\ProjectionController;
 use App\Http\Controllers\AIChatController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\AIDataController;
 
+// ==========================================
+// AI ENGINE INTERNAL API
+// ==========================================
+Route::prefix('ai-data')->group(function () {
+    Route::get('/stock', [AIDataController::class, 'getStock']);
+    Route::get('/financial', [AIDataController::class, 'getFinancial']);
+    Route::get('/mutations', [AIDataController::class, 'getMutations']);
+    Route::get('/schema', [AIDataController::class, 'getSchema']);
+    Route::post('/query', [AIDataController::class, 'executeQuery']);
+});
 // ==========================================
 // AUTH (Public)
 // ==========================================

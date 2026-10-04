@@ -174,6 +174,9 @@ class MakloonService
             // ==========================================
             // 2. Create MAKLOON_IN transaction
             // ==========================================
+            $subtotal_makloon = $hargaSatuan * $receivedQty;
+            $dpp_makloon = $subtotal_makloon * (11 / 12);
+
             $trxInId = $this->idGenerator->generateTransactionId('MAKLOON_IN');
             $transactionIn = Transaction::create([
                 'idTransaksi' => $trxInId,
@@ -186,7 +189,11 @@ class MakloonService
                 'keterangan' => "Penerimaan barang jadi Makloon WO: {$order->wo_number}",
                 'pajak_persen' => $pajakPersen,
                 'pajak_nominal' => $pajakNominal,
-                'totalTransaksi' => $totalTransaksi
+                'totalTransaksi' => $totalTransaksi,
+                'potongan_harga' => 0,
+                'uang_muka' => 0,
+                'dpp' => $dpp_makloon,
+                'ppnbm' => 0
             ]);
 
             // ==========================================

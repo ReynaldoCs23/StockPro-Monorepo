@@ -1,21 +1,38 @@
 from flask import Flask, request, jsonify
 import pandas as pd
-from sqlalchemy import create_engine
+import requests
+import os
+from dotenv import load_dotenv
 import urllib.parse
 import google.generativeai as genai
 import traceback
 import datetime
 
+load_dotenv()
+
 app = Flask(__name__)
 
 # Konfigurasi API Gemini
-API_KEY = "AQ.Ab8RN6IVDyEYexNH3IxPtJphFQSjwk1KlBjUKXDX_m2BFAIgMQ"
+API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=API_KEY)
 
-# Konfigurasi Database (sama seperti forecaster.py)
-password = urllib.parse.quote_plus('*Reynaldo22')
-engine = create_engine(f'mysql+pymysql://root:{password}@127.0.0.1:3307/inventory_db')
+# Konfigurasi API Backend Laravel
+LARAVEL_API_URL = "http://127.0.0.1:8000/api/ai-data"
+AI_API_KEY = os.environ.get("AI_API_KEY", "")
 
+def fetch_from_laravel(endpoint: str, params: dict = None, is_post: bool = False, json_data: dict = None):
+    url = f"{LARAVEL_API_URL}/{endpoint}"
+    headers = {"Authorization": f"Bearer {AI_API_KEY}"} if AI_API_KEY else {}
+    try:
+        if is_post:
+            response = requests.post(url, headers=headers, json=json_data)
+        else:
+            response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error calling {url}: {e}")
+        return None
 
 # ==========================================
 # 1. DEFINISI FUNGSI/ALAT UNTUK GEMINI
@@ -24,53 +41,27 @@ engine = create_engine(f'mysql+pymysql://root:{password}@127.0.0.1:3307/inventor
 def get_current_stock(search_item: str = "") -> str:
     """Ambil stok barang. Isi parameter search_item jika user mencari barang spesifik, biarkan kosong untuk semua."""
     try:
-        where_clause = f"WHERE nama LIKE '%{search_item}%'" if search_item else ""
-        query = f"SELECT kodeBarang, nama, kategori, stok FROM items {where_clause} LIMIT 30"
-        df = pd.read_sql(query, engine)
-        if df.empty:
-            return "Stok kosong/tidak ditemukan."
-        return df.to_csv(index=False)
+        data = fetch_from_laravel("stock")
+        if not data:
+            return "Stok kosong/tidak ditemukan atau error API."
+        df = pd.DataFrame(data)
+        if search_item:
+            df = df[df['nama'].str.contains(search_item, case=False, na=False)]
+            if df.empty:
+                return "Stok kosong/tidak ditemukan."
+        return df.head(30).to_csv(index=False)
     except Exception as e:
-        return f"Err DB: {e}"
+        return f"Err API: {e}"
 
 def get_financial_summary(start_date: str, end_date: str) -> str:
     """Mengambil ringkasan keuangan BERSIH (NET) dalam format Rupiah untuk rentang tanggal tertentu (YYYY-MM-DD). Gunakan JIKA user bertanya seputar PROFIT, PEMASUKAN, PENGELUARAN, LABA, atau ARUS KAS."""
     try:
-        query = f"""
-        SELECT 
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
-            - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%%' THEN totalTransaksi ELSE 0 END), 0)
-            as penjualan_distributor_net,
-
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%%' THEN totalTransaksi ELSE 0 END), 0)
-            + COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%%' THEN totalTransaksi ELSE 0 END), 0)
-            - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
-            as total_belanja_stok_net,
-
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%%' THEN totalTransaksi ELSE 0 END), 0)
-            as pembelian_supplier,
-
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%%' THEN totalTransaksi ELSE 0 END), 0)
-            as biaya_makloon,
-
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
-            as bahan_baku_makloon,
-
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-IN%%' THEN totalTransaksi ELSE 0 END), 0)
-            as retur_dari_customer,
-
-            COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%%' THEN totalTransaksi ELSE 0 END), 0)
-            as retur_ke_supplier
-        FROM transactions 
-        WHERE DATE(tanggal) BETWEEN '{start_date}' AND '{end_date}' AND status = 'completed'
-        """
-        df = pd.read_sql(query, engine)
-        if df.empty:
+        data = fetch_from_laravel("financial", {"start_date": start_date, "end_date": end_date})
+        if not data:
             return f"Tidak ada catatan dari {start_date} hingga {end_date}."
         
-        row = df.iloc[0]
-        penjualan_net = float(row['penjualan_distributor_net'])
-        belanja_net = float(row['total_belanja_stok_net'])
+        penjualan_net = float(data.get('penjualan_distributor_net', 0))
+        belanja_net = float(data.get('total_belanja_stok_net', 0))
         estimasi_laba = penjualan_net - belanja_net
         margin = round((estimasi_laba / penjualan_net) * 100, 1) if penjualan_net > 0 else 0
 
@@ -78,54 +69,39 @@ def get_financial_summary(start_date: str, end_date: str) -> str:
             f"Periode: {start_date} s.d {end_date}\n"
             f"Penjualan Distributor (Net, sudah dikurangi retur masuk): Rp {penjualan_net:,.2f}\n"
             f"Total Belanja Stok (Net, sudah dikurangi retur keluar): Rp {belanja_net:,.2f}\n"
-            f"  - Pembelian dari Supplier: Rp {float(row['pembelian_supplier']):,.2f}\n"
-            f"  - Biaya Jasa Makloon: Rp {float(row['biaya_makloon']):,.2f}\n"
-            f"  - Bahan Baku Makloon: Rp {float(row['bahan_baku_makloon']):,.2f}\n"
-            f"  - Retur ke Supplier (pengurang): Rp {float(row['retur_ke_supplier']):,.2f}\n"
-            f"Retur dari Customer (pengurang penjualan): Rp {float(row['retur_dari_customer']):,.2f}\n"
+            f"  - Pembelian dari Supplier: Rp {float(data.get('pembelian_supplier', 0)):,.2f}\n"
+            f"  - Biaya Jasa Makloon: Rp {float(data.get('biaya_makloon', 0)):,.2f}\n"
+            f"  - Bahan Baku Makloon: Rp {float(data.get('bahan_baku_makloon', 0)):,.2f}\n"
+            f"  - Retur ke Supplier (pengurang): Rp {float(data.get('retur_ke_supplier', 0)):,.2f}\n"
+            f"Retur dari Customer (pengurang penjualan): Rp {float(data.get('retur_dari_customer', 0)):,.2f}\n"
             f"Estimasi Laba Penjualan: Rp {estimasi_laba:,.2f}\n"
             f"Margin Laba: {margin}%"
         )
         return summary
     except Exception as e:
-        return f"Error database: {e}"
+        return f"Error API: {e}"
 
 def get_item_mutations(start_date: str, end_date: str) -> str:
     """Mengambil jumlah kuantitas barang masuk dan keluar dalam rentang tanggal (YYYY-MM-DD). Gunakan JIKA ditanya rincian BARANG TERJUAL, BARANG DIBELI, atau PERGERAKAN FISIK."""
     try:
-        query = f"""
-        SELECT d.namaBarang, 
-            CASE 
-                WHEN t.type = 'IN' THEN 'Masuk (Stok Bertambah)'
-                WHEN t.type = 'OUT' THEN 'Keluar Terjual (Stok Berkurang)'
-                WHEN t.type = 'RET' THEN 'Return (Stok Berkurang)'
-                WHEN t.type = 'MAKLOON_OUT' THEN 'Makloon Keluar (Stok Berkurang)'
-                WHEN t.type = 'MAKLOON_IN' THEN 'Makloon Masuk (Stok Bertambah)'
-                ELSE t.type 
-            END as jenis_pergerakan, 
-            SUM(d.jumlah) as total_qty 
-        FROM transaction_details d 
-        JOIN transactions t ON t.idTransaksi = d.idTransaksi 
-        WHERE DATE(t.tanggal) BETWEEN '{start_date}' AND '{end_date}' AND t.status = 'completed'
-        GROUP BY d.namaBarang, t.type
-        """
-        df = pd.read_sql(query, engine)
-        if df.empty:
+        data = fetch_from_laravel("mutations", {"start_date": start_date, "end_date": end_date})
+        if not data:
             return f"Tidak ada pergerakan barang dari {start_date} hingga {end_date}."
+        df = pd.DataFrame(data)
         return df.to_csv(index=False)
     except Exception as e:
-        return f"Error database: {e}"
+        return f"Error API: {e}"
 
 def get_database_schema() -> str:
     """Mengambil skema tabel dan kolom. Panggil HANYA JIKA pertanyaan tidak bisa dijawab oleh fungsi stok, keuangan, atau mutasi!"""
     try:
-        query = "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'inventory_db' AND TABLE_NAME != 'migrations'"
-        df = pd.read_sql(query, engine)
-        if df.empty:
+        data = fetch_from_laravel("schema")
+        if not data:
             return "Skema kosong."
+        df = pd.DataFrame(data)
         return df.to_csv(index=False)
     except Exception as e:
-        return f"Error database: {e}"
+        return f"Error API: {e}"
 
 def execute_sql_query(query: str) -> str:
     """Mengeksekusi query MySQL dinamis (HANYA SELECT). Panggil setelah Anda mendapat skema, dan HANYA JIKA fungsi stok/keuangan/mutasi tidak bisa digunakan."""
@@ -134,9 +110,10 @@ def execute_sql_query(query: str) -> str:
          return "Error: Security block! Hanya diperbolehkan perintah SELECT, SHOW, atau DESCRIBE demi keamanan data."
     
     try:
-        df = pd.read_sql(query, engine)
-        if df.empty:
+        data = fetch_from_laravel("query", is_post=True, json_data={"query": query})
+        if not data:
             return "Query berhasil, tapi hasilnya kosong."
+        df = pd.DataFrame(data)
         return df.to_csv(index=False)
     except Exception as e:
         return f"Error eksekusi query: {e}"

@@ -3,10 +3,19 @@ from sqlalchemy import create_engine
 from statsmodels.tsa.holtwinters import SimpleExpSmoothing
 import datetime
 
-# 1. Akses Database (Sesuaikan port dan kredensial lokal)
 import urllib.parse
-password = urllib.parse.quote_plus('*Reynaldo22')
-engine = create_engine(f'mysql+pymysql://root:{password}@127.0.0.1:3307/inventory_db')
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+db_user = os.environ.get("DB_USER", "root")
+db_pass = urllib.parse.quote_plus(os.environ.get("DB_PASS", ""))
+db_host = os.environ.get("DB_HOST", "127.0.0.1")
+db_port = os.environ.get("DB_PORT", "3307")
+db_name = os.environ.get("DB_NAME", "inventory_db")
+
+engine = create_engine(f'mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}')
 
 # 2. Ekstraksi Histori Pergerakan Barang
 query = """

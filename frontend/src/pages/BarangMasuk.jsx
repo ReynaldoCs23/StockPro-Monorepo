@@ -44,6 +44,9 @@ export default function BarangMasuk() {
     // Detail Data (Multi-item)
     const [cartItems, setCartItems] = useState([{ kodeBarang: '', jumlah: '', harga_modal_satuan: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
     const [pajakPersen, setPajakPersen] = useState(11);
+    const [potonganHarga, setPotonganHarga] = useState(0);
+    const [uangMuka, setUangMuka] = useState(0);
+    const [ppnbm, setPpnbm] = useState(0);
     const [makloonRefs, setMakloonRefs] = useState([]);
 
     useEffect(() => {
@@ -106,6 +109,9 @@ export default function BarangMasuk() {
         setEditId(null);
         setFormData({ tanggal: todayString, sumber: 'Dari Supplier', namaSupplier: '', keterangan: '', idReferensi: '' });
         setCartItems([{ kodeBarang: '', jumlah: '', harga_modal_satuan: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
+        setPotonganHarga(0);
+        setUangMuka(0);
+        setPpnbm(0);
         setModalOpen(true);
     };
 
@@ -133,6 +139,9 @@ export default function BarangMasuk() {
             setCartItems([{ kodeBarang: '', jumlah: '', harga_modal_satuan: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
         }
         
+        setPotonganHarga(row.potongan_harga || 0);
+        setUangMuka(row.uang_muka || 0);
+        setPpnbm(row.ppnbm || 0);
         setModalOpen(true);
     };
 
@@ -235,6 +244,10 @@ export default function BarangMasuk() {
             ...formData,
             pajak_persen: pajakPersen,
             pajak_nominal: pajakNominalCalc,
+            potongan_harga: potonganHarga,
+            uang_muka: uangMuka,
+            ppnbm: ppnbm,
+            dpp: subtotalCalc * (11 / 12),
             totalTransaksi: subtotalCalc + pajakNominalCalc,
             items: validItems.map(item => ({
                 ...item,
@@ -508,8 +521,27 @@ export default function BarangMasuk() {
                     {(() => {
                         const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
+                        const dppVisual = subtotal * (11 / 12);
                         return (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
+                                        <input type="number" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
+                                        <input type="number" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
+                                        <input type="number" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Dasar Pengenaan Pajak (DPP)</label>
+                                        <input type="text" readOnly className="w-full p-2 border border-slate-200 bg-slate-100 rounded-lg text-sm font-semibold text-slate-600" value={formatRp(dppVisual)} title="Subtotal * (11/12)" />
+                                    </div>
+                                </div>
                                 <div className="flex items-center gap-3">
                                     <label className="text-sm font-medium text-slate-700 whitespace-nowrap">Pajak / PPN (%)</label>
                                     <input type="number" min="0" max="100" className="w-24 p-2 border rounded-lg text-sm text-center font-bold:border-blue-500:ring-blue-500" value={pajakPersen} onChange={e => setPajakPersen(Number(e.target.value) || 0)} />
