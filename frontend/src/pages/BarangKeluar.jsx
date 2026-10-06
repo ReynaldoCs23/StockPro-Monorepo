@@ -42,7 +42,7 @@ export default function BarangKeluar() {
     const [globalSummary, setGlobalSummary] = useState({ total_transactions: 0, total_qty: 0 });
 
     // Header Data
-    const [formData, setFormData] = useState({ tanggal: todayString, tujuan: 'Penjualan ke Customer', namaPembeli: '', keterangan: '' });
+    const [formData, setFormData] = useState({ tanggal: todayString, tujuan: 'Penjualan ke Customer', namaPembeli: '', keterangan: '', no_faktur: '' });
     // Detail Data
     const [cartItems, setCartItems] = useState([{ kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
     const [pajakPersen, setPajakPersen] = useState(11);
@@ -94,14 +94,64 @@ export default function BarangKeluar() {
         fetchOutboundTransactions();
     }, [filterType, filterStart, filterEnd, currentPage]);
 
+    const fetchAllForExport = async () => {
+        setIsProcessing(true);
+        const safeStart = getLocalYYYYMMDD(new Date(filterStart));
+        const safeEnd = getLocalYYYYMMDD(new Date(filterEnd));
+        try {
+            const response = await apiCall(`/transactions?category=outbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
+            const data = response.data || [];
+            
+            // Flatten: 1 item = 1 row
+            const flattened = [];
+            data.forEach(trx => {
+                if (trx.items && trx.items.length > 0) {
+                    trx.items.forEach(item => {
+                        flattened.push({
+                            ...trx,
+                            _itemName: item.namaBarang || item.item_nama || '-',
+                            _itemHargaSatuan: item.harga_satuan,
+                            _itemQty: item.jumlah,
+                            _itemTotal: (item.jumlah * item.harga_satuan),
+                            _itemHargaJual: item.hargaJual || 0
+                        });
+                    });
+                } else {
+                    flattened.push(trx);
+                }
+            });
+            return flattened;
+        } catch (e) {
+            console.error("Export Error:", e);
+            return [];
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const exportColumnsCSV = [
+        { key: 'idTransaksi', label: 'ID' },
+        { key: 'no_faktur', label: 'No.faktur' },
+        { key: '_itemName', label: 'Nama Barang' },
+        { key: '_itemHargaSatuan', label: 'Harga satuan' },
+        { key: '_itemQty', label: 'Qty' },
+        { key: '_itemTotal', label: 'Total' },
+        { key: 'potongan_harga', label: 'Discount' },
+        { key: '_itemHargaJual', label: 'Harga Jual/Penggantian/DPP' },
+        { key: 'dpp', label: 'DPP Nilai Lain/DPP' },
+        { key: 'pajak_nominal', label: 'PPN' },
+        { key: 'keterangan', label: 'Ket' },
+        { key: 'tanggal', label: 'Tanggal Faktur', exportFormat: (val) => val ? new Date(val).toLocaleDateString('id-ID') : '-' }
+    ];
+
     const isMakloonOut = formData.tujuan === 'Kirim ke Vendor Makloon';
     const makloonVendors = suppliers.filter(s => s.tipe_partner === 'vendor' || s.idSupplier.startsWith('VEN'));
     const produkJadiItems = items.filter(i => (i.tipeBarang || '').toLowerCase() === 'produk jadi');
 
     const openAddModal = () => {
         setEditId(null);
-        setFormData({ tanggal: todayString, tujuan: 'Penjualan ke Customer', namaPembeli: '', keterangan: '' });
-        setCartItems([{ kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
+        setFormData({ tanggal: todayString, tujuan: 'Penjualan ke Customer', namaPembeli: '', keterangan: '', no_faktur: '' });
+        setCartItems([{ kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '', harga_satuan: '' }]);
         setTargetKodeBarang('');
         setPotonganHarga(0);
         setUangMuka(0);
@@ -115,7 +165,8 @@ export default function BarangKeluar() {
             tanggal: row.tanggal ? getLocalYYYYMMDD(row.tanggal) : todayString,
             tujuan: row.tujuan || 'Penjualan ke Customer',
             namaPembeli: row.namaPembeli || '',
-            keterangan: row.keterangan || ''
+            keterangan: row.keterangan || '',
+            no_faktur: row.no_faktur || ''
         });
         setCartItems(row.items && row.items.length > 0 ? row.items.map(item => ({
             ...item,
@@ -123,8 +174,9 @@ export default function BarangKeluar() {
             jumlah: item.jumlah_transaksi || item.jumlah,
             lokasi_asal: item.lokasi_asal || '',
             lokasi_tujuan: item.lokasi_tujuan || '',
-            satuan_transaksi: item.satuan_transaksi || items.find(i => i.kodeBarang === item.kodeBarang)?.satuan_dasar || ''
-        })) : [{ kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
+            satuan_transaksi: item.satuan_transaksi || items.find(i => i.kodeBarang === item.kodeBarang)?.satuan_dasar || '',
+            harga_satuan: item.harga_satuan || item.hargaJual || ''
+        })) : [{ kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '', harga_satuan: '' }]);
         
         setPotonganHarga(row.potongan_harga || 0);
         setUangMuka(row.uang_muka || 0);
@@ -151,14 +203,25 @@ export default function BarangKeluar() {
         }
     };
 
-    const handleAddRow = () => setCartItems([...cartItems, { kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: formData.namaPembeli || '', satuan_transaksi: '' }]);
+    const handleAddRow = () => setCartItems([...cartItems, { kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: formData.namaPembeli || '', satuan_transaksi: '', harga_satuan: '' }]);
     const handleRemoveRow = (index) => setCartItems(cartItems.filter((_, i) => i !== index));
     const handleRowChange = (index, field, value) => {
         const newCart = [...cartItems];
         newCart[index][field] = value;
         if (field === 'kodeBarang') {
             const item = items.find(i => i.kodeBarang === value);
-            if (item) newCart[index].satuan_transaksi = item.satuan_dasar || '';
+            if (item) {
+                newCart[index].satuan_transaksi = item.satuan_dasar || '';
+                newCart[index].harga_satuan = item.hargaJual || 0;
+            }
+        }
+        if (field === 'satuan_transaksi') {
+            const item = items.find(i => i.kodeBarang === newCart[index].kodeBarang);
+            if (item) {
+                const isBesar = value === item.satuan_besar;
+                const rasio = Number(item.rasio_konversi || 1);
+                newCart[index].harga_satuan = isBesar ? (Number(item.hargaJual_besar) || Number(item.hargaJual || 0) * rasio) : Number(item.hargaJual || 0);
+            }
         }
         setCartItems(newCart);
     };
@@ -396,6 +459,8 @@ export default function BarangKeluar() {
 
                 <DataTable
                     title="Barang Keluar" filename="Barang_Keluar" data={filteredOutbound}
+                    onExportCSV={fetchAllForExport}
+                    exportColumns={exportColumnsCSV}
                     onPrintLaporan={handlePrintLaporan}
                     customFilter={
                         <div className="relative mr-2 w-full md:w-auto">
@@ -470,6 +535,10 @@ export default function BarangKeluar() {
                             </select>
                         </div>
                         <div className="col-span-2">
+                            <label className="block text-sm font-medium mb-1">No. Faktur (Opsional)</label>
+                            <input type="text" placeholder="Masukkan Nomor Faktur Manual" className="w-full p-2.5 border rounded-xl:border-blue-500:ring-blue-500" value={formData.no_faktur} onChange={e => setFormData({ ...formData, no_faktur: e.target.value })} />
+                        </div>
+                        <div className="col-span-2">
                             <label className="block text-sm font-medium mb-1">{isMakloonOut ? 'Nama Vendor Makloon' : 'Nama Pelanggan / Distributor'}</label>
                             <select required className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none:border-blue-500:ring-blue-500" value={formData.namaPembeli} onChange={e => {
                                 const name = e.target.value;
@@ -504,10 +573,7 @@ export default function BarangKeluar() {
                                 {cartItems.map((item, idx) => {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
                                     const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
-                                    const isBesar = item.satuan_transaksi === selectedItem?.satuan_besar;
-                                    const rasio = Number(selectedItem?.rasio_konversi || 1);
-                                    const unitPrice = isBesar ? (Number(selectedItem?.hargaJual_besar) || Number(selectedItem?.hargaJual || 0) * rasio) : Number(selectedItem?.hargaJual || 0);
-                                    const lineSubtotal = Number(item.jumlah) * unitPrice;
+                                    const lineSubtotal = Number(item.jumlah) * Number(item.harga_satuan || 0);
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
                                         <select required className="flex-1 min-w-[180px] p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.kodeBarang} onChange={e => handleRowChange(idx, 'kodeBarang', e.target.value)}>
@@ -518,7 +584,8 @@ export default function BarangKeluar() {
                                         <select className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.satuan_transaksi} onChange={e => handleRowChange(idx, 'satuan_transaksi', e.target.value)}>
                                             {satuanOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                         </select>
-                                        <input type="text" readOnly className="w-28 p-2 border rounded-lg text-sm bg-slate-100 text-slate-600:border-blue-500:ring-blue-500" value={item.lokasi_tujuan || 'Lok. Tujuan...'} title="Otomatis dari Pelanggan" />
+                                        <input type="number" placeholder="Harga Satuan" required min="0" className="w-32 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.harga_satuan} onChange={e => handleRowChange(idx, 'harga_satuan', e.target.value)} title="Harga Jual Satuan" />
+                                        <input type="text" readOnly className="w-28 p-2 border rounded-lg text-sm bg-slate-100 text-slate-600:border-blue-500:ring-blue-500 hidden md:block" value={item.lokasi_tujuan || 'Lok. Tujuan...'} title="Otomatis dari Pelanggan" />
                                         <span className="w-28 text-xs font-semibold text-rose-700 text-right">{lineSubtotal > 0 ? formatRp(lineSubtotal) : '-'}</span>
                                         {cartItems.length > 1 && <button type="button" onClick={() => handleRemoveRow(idx)} className="p-2 text-rose-500 shrink-0"><Trash2 className="w-5 h-5" /></button>}
                                     </div>
@@ -535,11 +602,7 @@ export default function BarangKeluar() {
 
                     {formData.tujuan === 'Penjualan ke Customer' && (() => {
                         const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => {
-                            const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
-                            const isBesar = it.satuan_transaksi === stockData?.satuan_besar;
-                            const rasio = Number(stockData?.rasio_konversi || 1);
-                            const unitPrice = isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0);
-                            return sum + (Number(it.jumlah) * unitPrice);
+                            return sum + (Number(it.jumlah) * Number(it.harga_satuan || 0));
                         }, 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
                         const dppVisual = subtotal * (11 / 12);

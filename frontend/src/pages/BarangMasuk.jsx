@@ -40,7 +40,7 @@ export default function BarangMasuk() {
     const [confirmAction, setConfirmAction] = useState(null);
 
     // Header Data
-    const [formData, setFormData] = useState({ tanggal: todayString, sumber: 'Dari Supplier', namaSupplier: '', keterangan: '' });
+    const [formData, setFormData] = useState({ tanggal: todayString, sumber: 'Dari Supplier', namaSupplier: '', keterangan: '', no_faktur: '' });
     // Detail Data (Multi-item)
     const [cartItems, setCartItems] = useState([{ kodeBarang: '', jumlah: '', harga_modal_satuan: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
     const [pajakPersen, setPajakPersen] = useState(11);
@@ -88,6 +88,58 @@ export default function BarangMasuk() {
         fetchTransactions();
     }, [filterType, startDate, endDate, currentPage]);
 
+    const fetchAllForExport = async () => {
+        setIsProcessing(true);
+        const safeStart = getLocalYYYYMMDD(new Date(startDate));
+        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        try {
+            const response = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
+            const data = response.data || [];
+            
+            // Flatten: 1 item = 1 row
+            const flattened = [];
+            data.forEach(trx => {
+                if (trx.items && trx.items.length > 0) {
+                    trx.items.forEach(item => {
+                        flattened.push({
+                            ...trx, // header info
+                            _itemName: item.namaBarang || item.item_nama || '-',
+                            _itemHargaSatuan: item.harga_satuan,
+                            _itemQty: item.jumlah,
+                            _itemSatuan: item.satuan_transaksi,
+                            _itemTotal: (item.jumlah * item.harga_satuan),
+                            _itemHargaJual: item.hargaJual || 0
+                        });
+                    });
+                } else {
+                    // fallback if no items
+                    flattened.push(trx);
+                }
+            });
+            return flattened;
+        } catch (error) {
+            console.error("Export error", error);
+            return [];
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const exportColumnsCSV = [
+        { key: 'idTransaksi', label: 'ID' },
+        { key: 'no_faktur', label: 'No.faktur' },
+        { key: '_itemName', label: 'Nama Barang' },
+        { key: '_itemHargaSatuan', label: 'Harga satuan' },
+        { key: '_itemQty', label: 'Qty' },
+        { key: '_itemSatuan', label: 'Satuan' },
+        { key: '_itemTotal', label: 'Total' },
+        { key: 'potongan_harga', label: 'Discount' },
+        { key: '_itemHargaJual', label: 'Harga Jual/Penggantian/DPP' },
+        { key: 'dpp', label: 'DPP Nilai Lain/DPP' },
+        { key: 'pajak_nominal', label: 'PPN' },
+        { key: 'keterangan', label: 'Ket' },
+        { key: 'tanggal', label: 'Tanggal Faktur', exportFormat: (val) => val ? new Date(val).toLocaleDateString('id-ID') : '-' }
+    ];
 
 
     const isMakloonIn = formData.sumber === 'Terima dari Vendor Makloon';
@@ -107,7 +159,7 @@ export default function BarangMasuk() {
 
     const openAddModal = () => {
         setEditId(null);
-        setFormData({ tanggal: todayString, sumber: 'Dari Supplier', namaSupplier: '', keterangan: '', idReferensi: '' });
+        setFormData({ tanggal: todayString, sumber: 'Dari Supplier', namaSupplier: '', keterangan: '', idReferensi: '', no_faktur: '' });
         setCartItems([{ kodeBarang: '', jumlah: '', harga_modal_satuan: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '' }]);
         setPotonganHarga(0);
         setUangMuka(0);
@@ -122,7 +174,8 @@ export default function BarangMasuk() {
             sumber: row.sumber || 'Dari Supplier',
             namaSupplier: row.namaSupplier || '',
             keterangan: row.keterangan || '',
-            idReferensi: row.idReferensi || ''
+            idReferensi: row.idReferensi || '',
+            no_faktur: row.no_faktur || ''
         });
         
         if (row.items && row.items.length > 0) {
@@ -386,6 +439,8 @@ export default function BarangMasuk() {
                 </div>
 
                 <DataTable title="Barang Masuk" data={filteredInbound} idKey="idTransaksi" filename="Barang_Masuk"
+                    onExportCSV={fetchAllForExport}
+                    exportColumns={exportColumnsCSV}
                     onPrintLaporan={handlePrintLaporan}
                     customFilter={
                         <div className="relative mr-2 w-full md:w-auto">
@@ -447,6 +502,10 @@ export default function BarangMasuk() {
                                 <option value="Dari Supplier">Pembelian dari Supplier</option>
                                 <option value="Terima dari Vendor Makloon">Terima dari Vendor Makloon</option>
                             </select>
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-sm font-medium mb-1">No. Faktur (Opsional)</label>
+                            <input type="text" placeholder="Masukkan Nomor Faktur Manual" className="w-full p-2.5 border rounded-xl:border-blue-500:ring-blue-500" value={formData.no_faktur} onChange={e => setFormData({ ...formData, no_faktur: e.target.value })} />
                         </div>
                         <div className="col-span-2">
                             <label className="block text-sm font-medium mb-1">{isMakloonIn ? 'Nama Vendor Makloon' : 'Supplier'}</label>

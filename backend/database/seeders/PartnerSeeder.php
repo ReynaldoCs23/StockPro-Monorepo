@@ -10,16 +10,16 @@ class PartnerSeeder extends Seeder
     public function run(): void
     {
         $suppliers = [
-            ['idSupplier' => 'SUP-001', 'nama' => 'MANDIRI USAHA', 'tipe_partner' => 'supplier', 'npwp' => '0958137812908000', 'alamat' => 'JL KEBO IWA BTN BONGAN RESIDANCE NO 6A JL KEBO IWA, BONGAN KAUH, BONGAN, TABANAN, BALI A NO.6A, KAB. TABANAN', 'telp' => '-', 'penanggung_jawab' => 'M. ARIF JUNIAWAN'],
-            ['idSupplier' => 'SUP-002', 'nama' => 'KARTIKA AGUNG DEWATA', 'tipe_partner' => 'supplier', 'npwp' => '0028638245908000', 'alamat' => 'BR DINAS KUTUH KELOD , KAB. TABANAN', 'telp' => '-', 'penanggung_jawab' => 'NI PUTU LISNA DEWI'],
-            ['idSupplier' => 'SUP-003', 'nama' => 'TIRTA MUMBUL JAYA ABADI', 'tipe_partner' => 'supplier', 'npwp' => '0018287060904000', 'alamat' => 'JL MELATI BANJAR JAWA NO.9, RT 000, RW 000, BANJAR JAWA, BULELENG, KAB. BULELENG, BALI 81113', 'telp' => '-', 'penanggung_jawab' => 'NYOMAN ARTA WIDNYANA'],
-            ['idSupplier' => 'VEN-001', 'nama' => 'TIRTA MUMBUL JAYA ABADI', 'tipe_partner' => 'vendor', 'npwp' => '0018287060904000', 'alamat' => 'JL MELATI BANJAR JAWA NO.9, KAB. BULELENG', 'telp' => '-', 'penanggung_jawab' => 'NYOMAN ARTA WIDNYANA'],
+            ['idSupplier' => 'SUP-001', 'nama' => 'MANDIRI USAHA', 'tipe_partner' => 'supplier', 'npwp' => '0958137812908000', 'kota' => 'KAB. TABANAN', 'alamat' => 'JL KEBO IWA BTN BONGAN RESIDANCE NO 6A JL KEBO IWA, BONGAN KAUH, BONGAN, TABANAN, BALI A NO.6A, KAB. TABANAN', 'telp' => '-', 'penanggung_jawab' => 'M. ARIF JUNIAWAN'],
+            ['idSupplier' => 'SUP-002', 'nama' => 'KARTIKA AGUNG DEWATA', 'tipe_partner' => 'supplier', 'npwp' => '0028638245908000', 'kota' => 'KAB. TABANAN', 'alamat' => 'BR DINAS KUTUH KELOD , KAB. TABANAN', 'telp' => '-', 'penanggung_jawab' => 'NI PUTU LISNA DEWI'],
+            ['idSupplier' => 'SUP-003', 'nama' => 'TIRTA MUMBUL JAYA ABADI', 'tipe_partner' => 'supplier', 'npwp' => '0018287060904000', 'kota' => 'KAB. BULELENG', 'alamat' => 'JL MELATI BANJAR JAWA NO.9, RT 000, RW 000, BANJAR JAWA, BULELENG, KAB. BULELENG, BALI 81113', 'telp' => '-', 'penanggung_jawab' => 'NYOMAN ARTA WIDNYANA'],
+            ['idSupplier' => 'VEN-001', 'nama' => 'TIRTA MUMBUL JAYA ABADI', 'tipe_partner' => 'vendor', 'npwp' => '0018287060904000', 'kota' => 'KAB. BULELENG', 'alamat' => 'JL MELATI BANJAR JAWA NO.9, KAB. BULELENG', 'telp' => '-', 'penanggung_jawab' => 'NYOMAN ARTA WIDNYANA'],
         ];
 
         foreach ($suppliers as $sup) {
             DB::table('suppliers')->updateOrInsert(
                 ['idSupplier' => $sup['idSupplier']],
-                ['nama' => $sup['nama'], 'tipe_partner' => $sup['tipe_partner'], 'npwp' => $sup['npwp'], 'alamat' => $sup['alamat'], 'telp' => $sup['telp'], 'penanggung_jawab' => $sup['penanggung_jawab'], 'created_at' => now(), 'updated_at' => now()]
+                ['nama' => $sup['nama'], 'tipe_partner' => $sup['tipe_partner'], 'npwp' => $sup['npwp'], 'kota' => $sup['kota'], 'alamat' => $sup['alamat'], 'telp' => $sup['telp'], 'penanggung_jawab' => $sup['penanggung_jawab'], 'created_at' => now(), 'updated_at' => now()]
             );
         }
 

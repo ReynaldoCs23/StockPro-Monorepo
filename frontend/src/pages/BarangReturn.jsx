@@ -104,6 +104,21 @@ export default function BarangReturn() {
         }
     }, [filterType, startDate, endDate, currentPage]);
 
+    const fetchAllForExport = async () => {
+        setIsProcessing(true);
+        const safeStart = getLocalYYYYMMDD(new Date(startDate));
+        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        try {
+            const data = await apiCall(`/transactions?category=return&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
+            return data.data || [];
+        } catch (e) {
+            console.error("Export Error:", e);
+            return [];
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     // Count logic moved to use globalSummary
 
     // --- Open Modal ---
@@ -410,6 +425,7 @@ export default function BarangReturn() {
                     title="Riwayat Return"
                     data={filteredReturns}
                     idKey="idTransaksi"
+                    onExportCSV={fetchAllForExport}
                     filename="Barang_Return"
                     onDelete={can('delete_barang_return') ? handleDelete : null}
                     onPrint={(row) => setPrintData(row)}

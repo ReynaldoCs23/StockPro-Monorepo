@@ -10,12 +10,11 @@ class CategorySeeder extends Seeder
     public function run(): void
     {
         $categories = [
-            ['idKategori' => 'KTG-001', 'nama' => 'Air mineral Galon'],
-            ['idKategori' => 'KTG-002', 'nama' => 'Air Mineral Besar'],
-            ['idKategori' => 'KTG-003', 'nama' => 'Air Mineral Sedang'],
-            ['idKategori' => 'KTG-004', 'nama' => 'Air Mineral Kecil'],
-            ['idKategori' => 'KTG-005', 'nama' => 'Air Mineral Cup'],
-            ['idKategori' => 'KTG-006', 'nama' => 'Bahan Baku dan Kemasan'],
+            ['idKategori' => 'KTG-001', 'nama' => 'Galon'],
+            ['idKategori' => 'KTG-002', 'nama' => 'Gelas'],
+            ['idKategori' => 'KTG-003', 'nama' => 'Botol'],
+            ['idKategori' => 'KTG-004', 'nama' => 'Karton'],
+            ['idKategori' => 'KTG-005', 'nama' => 'Tutup Botol'],
         ];
 
         foreach ($categories as $category) {

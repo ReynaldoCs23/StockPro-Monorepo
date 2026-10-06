@@ -60,6 +60,20 @@ export default function StockAdjustment() {
         fetchAdjustments();
     }, [currentPage, isApiOffline, startDate, endDate]);
 
+    const fetchAllForExport = async () => {
+        setIsProcessing(true);
+        try {
+            const data = await apiCall(`/stock-adjustments?start_date=${startDate}&end_date=${endDate}&per_page=all`);
+            return data.data || [];
+        } catch (e) {
+            console.error("Export Error:", e);
+            return [];
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+
     useEffect(() => {
         if (formData.item_id && formData.adjustment_type === 'subtraction' && !isApiOffline) {
             apiCall(`/item-batches/available?kodeBarang=${formData.item_id}`)
@@ -197,6 +211,7 @@ export default function StockAdjustment() {
                 title="Daftar Penyesuaian Stok"
                 columns={columns} 
                 data={adjustments} 
+                onExportCSV={fetchAllForExport}
                 currentPage={currentPage}
                 lastPage={lastPage}
                 onPageChange={setCurrentPage}

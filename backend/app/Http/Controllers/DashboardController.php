@@ -344,7 +344,7 @@ class DashboardController extends Controller {
      * Centralized Profit Calculation - Single Source of Truth
      * All profit widgets MUST derive from this method.
      */
-    private function getProfitAnalyticsBase($startBound, $endBound)
+    public function getProfitAnalyticsBase($startBound, $endBound)
     {
         $batchAggQuery = DB::table('transaction_batch_details')
             ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')

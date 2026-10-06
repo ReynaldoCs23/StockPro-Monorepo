@@ -3,30 +3,45 @@ import { Search, FileSpreadsheet, FileText, Plus, Edit, Trash2 } from '../icons/
 import ConfirmModal from './ConfirmModal';
 import dayjs from 'dayjs';
 
-export default function DataTable({ 
-    title, data, columns, onAdd, onEdit, onDelete, onPrint, idKey, filename, customFilter, hideActions,
-    currentPage, lastPage, onPageChange, extraActions, onPrintLaporan
+export default function DataTable({
+    title, data, columns, exportColumns, onAdd, onEdit, onDelete, onPrint, idKey, filename, customFilter, hideActions,
+    currentPage, lastPage, onPageChange, extraActions, onPrintLaporan, onExportCSV
 }) {
     const [search, setSearch] = useState('');
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [isCancelMode, setIsCancelMode] = useState(false);
-    const filteredData = data.filter(row => 
+    const filteredData = data.filter(row =>
         JSON.stringify(row).toLowerCase().includes(search.toLowerCase())
     );
-    
-    const handleExportCSV = () => {
-        if (!filteredData || filteredData.length === 0) return;
-        const exportCols = columns.filter(c => c.label !== 'Aksi'); 
+
+    const handleExportCSV = async () => {
+        let exportData = filteredData;
+        if (onExportCSV) {
+            try {
+                const fetchedData = await onExportCSV();
+                if (fetchedData && fetchedData.length > 0) {
+                    exportData = fetchedData;
+                } else {
+                    return; // Tidak ada data
+                }
+            } catch (e) {
+                console.error("Export Error:", e);
+                return;
+            }
+        }
+
+        if (!exportData || exportData.length === 0) return;
+        const exportCols = exportColumns || columns.filter(c => c.label !== 'Aksi');
         const headers = exportCols.map(c => `"${c.label}"`).join(',');
-        const rows = filteredData.map(row => {
+        const rows = exportData.map(row => {
             return exportCols.map(c => {
                 let val = c.exportFormat ? c.exportFormat(row[c.key], row) : row[c.key];
-                if (c.key === 'tanggal' && val) val = new Date(val).toLocaleDateString('id-ID');
+                if (c.key === 'tanggal' && val && !c.exportFormat) val = new Date(val).toLocaleDateString('id-ID');
                 if (val === null || val === undefined) val = '-';
                 return `"${String(val).replace(/"/g, '""')}"`;
             }).join(',');
         }).join('\n');
-        
+
         const blob = new Blob(['\uFEFF' + headers + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -75,13 +90,13 @@ export default function DataTable({
                     {onAdd && <button onClick={onAdd} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700"><Plus className="w-4 h-4" /> Tambah</button>}
                 </div>
             </div>
-            
+
             <div className="hidden print:block mb-6 text-center pb-3 border-b border-slate-400">
-               <p className="text-[12px] text-slate-500 font-medium tracking-widest uppercase">PT Mara Jaya Dewi Sakti</p>
-               <h1 className="text-xl font-bold uppercase tracking-wider mt-1 text-slate-900">Laporan {title}</h1>
-               <p className="text-[10px] text-slate-500 mt-1">Dicetak pada: {new Date().toLocaleString('id-ID')} &bull; Total Data: {filteredData.length}</p>
+                <p className="text-[12px] text-slate-500 font-medium tracking-widest uppercase">PT Mara Jaya Dewi Sakti</p>
+                <h1 className="text-xl font-bold uppercase tracking-wider mt-1 text-slate-900">Laporan {title}</h1>
+                <p className="text-[10px] text-slate-500 mt-1">Dicetak pada: {new Date().toLocaleString('id-ID')} &bull; Total Data: {filteredData.length}</p>
             </div>
-            
+
             <div className="overflow-x-auto rounded-xl border border-slate-200 print:border-none print:overflow-visible">
                 <table className="print-table w-full text-left text-sm text-slate-600 print:text-[11px] print:text-slate-900">
                     <thead className="bg-slate-50 text-slate-700 border-b">
@@ -103,7 +118,7 @@ export default function DataTable({
                                                 {onPrint && <button onClick={() => onPrint(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Print Surat Jalan/Struk"><FileText className="w-4 h-4" /></button>}
                                                 {(() => {
                                                     if (isProtected) return null;
-                                                    
+
                                                     const isTransaction = !!row.idTransaksi;
                                                     if (isTransaction) {
                                                         if (row.status !== 'scheduled') {
@@ -151,14 +166,14 @@ export default function DataTable({
                         Halaman {currentPage} dari {lastPage}
                     </span>
                     <div className="flex gap-2">
-                        <button 
+                        <button
                             disabled={currentPage === 1}
                             onClick={() => onPageChange(currentPage - 1)}
                             className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
                         >
                             Sebelumnya
                         </button>
-                        <button 
+                        <button
                             disabled={currentPage === lastPage}
                             onClick={() => onPageChange(currentPage + 1)}
                             className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"

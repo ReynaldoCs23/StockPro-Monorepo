@@ -26,7 +26,14 @@ class StockAdjustmentController extends Controller
             ]);
         }
         
-        return response()->json($query->paginate(10));
+        $perPage = $request->query('per_page', 10);
+        if ($perPage === 'all') {
+            $perPage = 999999;
+        } else {
+            $perPage = (int) $perPage;
+        }
+        
+        return response()->json($query->paginate($perPage));
     }
 
     public function store(Request $request)

@@ -86,6 +86,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
     const entityData = {
         nama: entity.nama || entityName,
         alamat: getValidData(entity.alamat_lengkap, entity.alamat, '-'),
+        kota: getValidData(entity.kota, null, ''),
         npwp: getValidData(entity.npwp, null, '-'),
         nik: getValidData(entity.nik, null, '-'),
         penanggung_jawab: getValidData(entity.penanggung_jawab, null, '.......................'),
@@ -131,6 +132,35 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
     const ppn = Number(data.pajak_nominal || 0) || (dpp * pajakPersen / 100);
     // grandTotal from DB is best, fallback to calculation if missing
     const grandTotal = data.totalTransaksi ? Number(data.totalTransaksi) : (dpp + ppn + ppnbm);
+
+    // Signature utilities
+    const extractCity = (address) => {
+        if (!address) return 'KAB. BULELENG';
+        const upper = String(address).toUpperCase();
+        if (upper.includes('KAB.')) {
+            const match = upper.match(/KAB\.\s+[A-Z\s]+/);
+            if (match) return match[0].split(',')[0].trim();
+        }
+        if (upper.includes('KOTA')) {
+            const match = upper.match(/KOTA\s+[A-Z\s]+/);
+            if (match) return match[0].split(',')[0].trim();
+        }
+        if (upper.includes('BULELENG')) return 'KAB. BULELENG';
+        if (upper.includes('TABANAN')) return 'KAB. TABANAN';
+        if (upper.includes('DENPASAR')) return 'KOTA DENPASAR';
+        return 'KAB. BULELENG';
+    };
+
+    const formatDateLong = (dateStr) => {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    };
+
+    const signatureCity = isPembelian && entityData.kota ? entityData.kota : extractCity(MY_COMPANY.alamat);
+    const signatureDate = formatDateLong(data.tanggal);
 
     return (
         <div className="fixed inset-0 print:static print:inset-auto z-[9999] bg-slate-50/50 backdrop-blur-sm overflow-y-auto print:overflow-visible flex print:block justify-center p-4 sm:p-8 print:m-0 print:p-0 print:w-[190mm] print:max-w-[190mm] print:mx-auto max-w-4xl mx-auto print:bg-white print-only-layout text-black" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
@@ -239,24 +269,11 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                         </div>
                     )}
 
-                    {/* Signatures */}
-                    <div className="grid grid-cols-2 gap-8 mt-10 text-center text-sm print:mt-8">
-                        <div className="flex flex-col items-center justify-end">
-                            <p className="font-bold uppercase">Penjual,</p>
-                            <div className="h-24"></div>
-                            <p className="font-bold uppercase">( {pihakPenyerah} )</p>
-                            <p className="text-xs text-slate-500 mt-1">{picPenyerah}</p>
+                    <div className="flex justify-end mt-10 text-center text-sm print:mt-8">
+                        <div className="flex flex-col items-center justify-end w-64">
+                            <p className="mb-20 uppercase">{signatureCity}, {signatureDate}</p>
+                            <p className="font-bold uppercase">{picPenyerah}</p>
                         </div>
-                        <div className="flex flex-col items-center justify-end">
-                            <p className="font-bold uppercase">Pembeli,</p>
-                            <div className="h-24"></div>
-                            <p className="font-bold uppercase">( {pihakPenerima} )</p>
-                            <p className="text-xs text-slate-500 mt-1">{picPenerima}</p>
-                        </div>
-                    </div>
-
-                    <div className="mt-12 text-[10px] text-slate-600 text-justify border-t border-slate-300 pt-3">
-                        <span className="font-bold">Penting:</span> Sesuai dengan ketentuan yang berlaku, dokumen ini merupakan Faktur Pajak yang sah sebagai bukti pungutan pajak.
                     </div>
                 </div>
             </div>

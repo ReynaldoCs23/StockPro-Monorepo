@@ -58,32 +58,53 @@ class AIDataController extends Controller
         ";
 
         $data = DB::select($query, [$start_date, $end_date]);
-        return response()->json($data[0] ?? []);
+        $result = (array)($data[0] ?? []);
+
+        // Laba memakai sumber yang SAMA dengan Dashboard (Penjualan DPP - HPP FIFO)
+        $profit = app(DashboardController::class)->getProfitAnalyticsBase($start_date, $end_date);
+        $result['penjualan_dpp'] = round($profit['grand_total_revenue'], 2);
+        $result['hpp_terjual'] = round($profit['grand_total_cogs'], 2);
+        $result['laba_bersih'] = round($profit['grand_total_revenue'] - $profit['grand_total_cogs'], 2);
+        $result['margin_persen'] = $profit['grand_total_revenue'] != 0
+            ? round(($result['laba_bersih'] / $profit['grand_total_revenue']) * 100, 2)
+            : 0;
+        $result['laba_per_produk'] = collect($profit['by_category'])->sortByDesc('profit')->take(10)->values();
+
+        return response()->json($result);
     }
 
     public function getMutations(Request $request) {
         $this->checkAuth($request);
         $start_date = $request->input('start_date');
         $end_date = $request->input('end_date');
+        $search_item = $request->input('search_item');
 
         $query = "
         SELECT d.namaBarang, 
             CASE 
-                WHEN t.type = 'IN' THEN 'Masuk (Stok Bertambah)'
-                WHEN t.type = 'OUT' THEN 'Keluar Terjual (Stok Berkurang)'
-                WHEN t.type = 'RET' THEN 'Return (Stok Berkurang)'
-                WHEN t.type = 'MAKLOON_OUT' THEN 'Makloon Keluar (Stok Berkurang)'
-                WHEN t.type = 'MAKLOON_IN' THEN 'Makloon Masuk (Stok Bertambah)'
+                WHEN t.type = 'IN' THEN 'Masuk'
+                WHEN t.type = 'OUT' THEN 'Keluar'
+                WHEN t.type = 'RET' THEN 'Return'
+                WHEN t.type = 'MAKLOON_OUT' THEN 'Mkl_Out'
+                WHEN t.type = 'MAKLOON_IN' THEN 'Mkl_In'
                 ELSE t.type 
-            END as jenis_pergerakan, 
+            END as jenis, 
             SUM(d.jumlah) as total_qty 
         FROM transaction_details d 
         JOIN transactions t ON t.idTransaksi = d.idTransaksi 
         WHERE DATE(t.tanggal) BETWEEN ? AND ? AND t.status = 'completed'
-        GROUP BY d.namaBarang, t.type
         ";
+        
+        $bindings = [$start_date, $end_date];
+        
+        if (!empty($search_item)) {
+            $query .= " AND d.namaBarang LIKE ? ";
+            $bindings[] = '%' . $search_item . '%';
+        }
 
-        $data = DB::select($query, [$start_date, $end_date]);
+        $query .= " GROUP BY d.namaBarang, t.type ORDER BY total_qty DESC LIMIT 50";
+
+        $data = DB::select($query, $bindings);
         return response()->json($data);
     }
 

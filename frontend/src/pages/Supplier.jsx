@@ -16,19 +16,19 @@ export default function Supplier() {
     const [editId, setEditId] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [toast, setToast] = useState(null);
-    const [formData, setFormData] = useState({ nama: '', alamat: '', telp: '', npwp: '', nik: '', penanggung_jawab: '', tipe_partner: 'supplier' });
+    const [formData, setFormData] = useState({ nama: '', alamat: '', kota: '', telp: '', npwp: '', nik: '', penanggung_jawab: '', tipe_partner: 'supplier' });
 
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
 
     const openAddModal = () => { 
         setEditId(null); 
-        setFormData({ nama: '', alamat: '', telp: '', npwp: '', nik: '', penanggung_jawab: '', tipe_partner: 'supplier' }); 
+        setFormData({ nama: '', alamat: '', kota: '', telp: '', npwp: '', nik: '', penanggung_jawab: '', tipe_partner: 'supplier' }); 
         setModalOpen(true); 
     };
 
     const handleEdit = (row) => { 
         setEditId(row.idSupplier); 
-        setFormData({ nama: row.nama, alamat: row.alamat, telp: row.telp, npwp: row.npwp || '', nik: row.nik || '', penanggung_jawab: row.penanggung_jawab || '', tipe_partner: row.tipe_partner || 'supplier' }); 
+        setFormData({ nama: row.nama, alamat: row.alamat, kota: row.kota || '', telp: row.telp, npwp: row.npwp || '', nik: row.nik || '', penanggung_jawab: row.penanggung_jawab || '', tipe_partner: row.tipe_partner || 'supplier' }); 
         setModalOpen(true); 
     };
 
@@ -92,6 +92,8 @@ export default function Supplier() {
         { key: 'tipe_partner', label: 'Tipe Partner', format: v => <span className={`px-2 py-1 rounded text-xs font-bold ${v === 'vendor' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{v === 'vendor' ? 'Makloon Vendor' : 'Supplier'}</span>, exportFormat: v => v === 'vendor' ? 'Makloon Vendor' : 'Supplier' },
         { key: 'npwp', label: 'NPWP', format: v => v || '-' },
         { key: 'nik', label: 'NIK', format: v => v || '-' },
+        { key: 'kota', label: 'Kota', format: v => v || '-' },
+        { key: 'kota', label: 'Kota', format: v => v || '-' },
         { key: 'alamat', label: 'Alamat' }, 
         { key: 'telp', label: 'Telp' },
         { key: 'penanggung_jawab', label: 'Penanggung Jawab', format: v => v || '-' }
@@ -131,6 +133,10 @@ export default function Supplier() {
                     <div>
                         <label className="block text-sm font-medium mb-1 text-slate-700">Alamat</label>
                         <textarea required className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.alamat} onChange={e=>setFormData({...formData, alamat: e.target.value})}/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700">Kota</label>
+                        <input placeholder="Contoh: KAB. BULELENG / KOTA TABANAN" required className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.kota} onChange={e=>setFormData({...formData, kota: e.target.value})}/>
                     </div>
                     <div>
                         <label className="block text-sm font-medium mb-1 text-slate-700">No. Telp / WhatsApp</label>

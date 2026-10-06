@@ -13,7 +13,7 @@ class ItemSeeder extends Seeder
             [
                 'kodeBarang' => 'BRG-0001',
                 'nama' => 'Air Mineral Galon 19 Ltr',
-                'kategori' => 'Air mineral Galon',
+                'kategori' => 'Galon',
                 'tipeBarang' => 'Produk Jadi',
                 'satuan_dasar' => 'Unit',
                 'satuan_besar' => null,
@@ -28,7 +28,7 @@ class ItemSeeder extends Seeder
             [
                 'kodeBarang' => 'BRG-0002',
                 'nama' => 'Air Mineral Gelas 250ml',
-                'kategori' => 'Air Mineral Cup',
+                'kategori' => 'Gelas',
                 'tipeBarang' => 'Produk Jadi',
                 'satuan_dasar' => 'Pcs',
                 'satuan_besar' => 'Box',
@@ -103,7 +103,7 @@ class ItemSeeder extends Seeder
                         [
                 'kodeBarang' => 'RM-0004',
                 'nama' => 'Galon Kosong 19L',
-                'kategori' => 'Bahan Baku dan Kemasan',
+                'kategori' => 'Galon',
                 'tipeBarang' => 'BAHAN BAKU',
                 'satuan_dasar' => 'Pcs',
                 'satuan_besar' => null,

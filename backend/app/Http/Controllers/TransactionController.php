@@ -42,7 +42,7 @@ class TransactionController extends Controller {
                 'transactions.idTransaksi', 'transactions.type', 'transactions.tanggal', 
                 'transactions.sumber_tujuan', 'transactions.entitas', 'transactions.totalTransaksi',
                 'transactions.pajak_persen', 'transactions.pajak_nominal',
-                'transactions.idReferensi', 'transactions.keterangan', 'transactions.created_at', 
+                'transactions.idReferensi', 'transactions.no_faktur', 'transactions.keterangan', 'transactions.created_at', 
                 'transactions.updated_at'
             )
             ->orderBy('transactions.created_at', 'desc');
@@ -120,9 +120,7 @@ class TransactionController extends Controller {
         
         $perPage = $request->query('per_page', 10);
         if ($perPage === 'all') {
-            $countQuery = clone $query;
-            $totalCount = $countQuery->count();
-            $perPage = $totalCount > 0 ? $totalCount : 1;
+            $perPage = 999999;
         } else {
             $perPage = (int) $perPage;
         }
@@ -147,12 +145,10 @@ class TransactionController extends Controller {
         }
 
         $allMasterItems = collect();
-        if ($category === 'outbound' || $category === 'return') {
-            $itemCodes = DB::table('transaction_details')
-                ->whereIn('idTransaksi', $transactionIds)
-                ->pluck('kodeBarang')->unique()->toArray();
-            $allMasterItems = DB::table('items')->whereIn('kodeBarang', $itemCodes)->get()->keyBy('kodeBarang');
-        }
+        $itemCodes = DB::table('transaction_details')
+            ->whereIn('idTransaksi', $transactionIds)
+            ->pluck('kodeBarang')->unique()->toArray();
+        $allMasterItems = DB::table('items')->whereIn('kodeBarang', $itemCodes)->get()->keyBy('kodeBarang');
 
         $allRefTransactions = collect();
         $allRefDetails = collect();
@@ -189,10 +185,13 @@ class TransactionController extends Controller {
             $items = $allDetails->get($t->idTransaksi, collect());
             
             if ($category === 'inbound') {
-                $items = $items->map(function($item) use ($t, $allBatchesInbound) {
+                $items = $items->map(function($item) use ($t, $allBatchesInbound, $allMasterItems) {
                     $key = $t->idTransaksi . '_' . $item->kodeBarang;
                     $batch = $allBatchesInbound->get($key)?->first();
                     $item->lokasi_asal = $batch ? $batch->lokasi_rak : '';
+                    
+                    $master = $allMasterItems->get($item->kodeBarang);
+                    $item->hargaJual = $master->hargaJual ?? null;
                     return $item;
                 });
                 $t->sumber = $t->sumber_tujuan;
@@ -203,6 +202,8 @@ class TransactionController extends Controller {
                         $master = $allMasterItems->get($item->kodeBarang);
                         $item->harga_satuan = $master->hargaJual ?? 0;
                     }
+                    $master = $allMasterItems->get($item->kodeBarang);
+                    $item->hargaJual = $master->hargaJual ?? null;
                     return $item;
                 });
                 $t->tujuan = $t->sumber_tujuan;
@@ -685,6 +686,7 @@ class TransactionController extends Controller {
             'pajak_persen' => $payload['pajak_persen'] ?? 0,
             'pajak_nominal' => $payload['pajak_nominal'] ?? 0,
             'idReferensi' => $payload['idReferensi'] ?? null,
+            'no_faktur' => $payload['no_faktur'] ?? null,
             'target_kode_barang' => $payload['target_kode_barang'] ?? null,
             'keterangan' => $payload['keterangan'] ?? null,
             'created_at' => $payload['created_at'] ?? Carbon::now(),
