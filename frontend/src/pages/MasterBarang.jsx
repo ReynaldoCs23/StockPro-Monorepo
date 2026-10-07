@@ -58,7 +58,7 @@ export default function MasterBarang() {
         e.preventDefault();
         setIsProcessing(true);
         try {
-            const payload = { ...formData, rasio_konversi: Number(formData.rasio_konversi) || 1 };
+            const payload = { ...formData, rasio_konversi: Number(formData.rasio_konversi) || 1, hargaBeli: Number(formData.hargaBeli) || 0, hargaBeli_besar: Number(formData.hargaBeli_besar) || 0, hargaJual: Number(formData.hargaJual) || 0, hargaJual_besar: Number(formData.hargaJual_besar) || 0 };
             if (!payload.satuan_besar) { payload.satuan_besar = null; payload.rasio_konversi = 1; }
             // Stok awal selalu 0 saat tambah baru — gunakan menu Penyesuaian Stok untuk input stok agar memiliki kode batch
             if (!editId) { payload.stok = 0; }

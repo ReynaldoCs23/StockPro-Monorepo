@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import FakturPajak from '../components/ui/FakturPajak';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import { apiCall } from '../utils/api';
-import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate } from '../utils/helpers';
+import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate, formatAngkaExport, flattenTransactionsForExport } from '../utils/helpers';
 import useAppStore from '../store/useAppStore';
 
 export default function BarangMasuk() {
@@ -62,8 +62,8 @@ export default function BarangMasuk() {
     const fetchTransactions = async () => {
         if (!isApiOffline) {
             setIsProcessing(true);
-            const safeStart = getLocalYYYYMMDD(new Date(startDate));
-            const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+            const safeStart = getLocalYYYYMMDD(startDate || new Date());
+            const safeEnd = getLocalYYYYMMDD(endDate || new Date());
             try {
                 const data = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`);
                 if (data && data.data) {
@@ -90,33 +90,13 @@ export default function BarangMasuk() {
 
     const fetchAllForExport = async () => {
         setIsProcessing(true);
-        const safeStart = getLocalYYYYMMDD(new Date(startDate));
-        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        const safeStart = getLocalYYYYMMDD(startDate || new Date());
+        const safeEnd = getLocalYYYYMMDD(endDate || new Date());
         try {
             const response = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
             const data = response.data || [];
-            
-            // Flatten: 1 item = 1 row
-            const flattened = [];
-            data.forEach(trx => {
-                if (trx.items && trx.items.length > 0) {
-                    trx.items.forEach(item => {
-                        flattened.push({
-                            ...trx, // header info
-                            _itemName: item.namaBarang || item.item_nama || '-',
-                            _itemHargaSatuan: item.harga_satuan,
-                            _itemQty: item.jumlah,
-                            _itemSatuan: item.satuan_transaksi,
-                            _itemTotal: (item.jumlah * item.harga_satuan),
-                            _itemHargaJual: item.hargaJual || 0
-                        });
-                    });
-                } else {
-                    // fallback if no items
-                    flattened.push(trx);
-                }
-            });
-            return flattened;
+            // Flatten: 1 item = 1 row (nilai keuangan dihitung per item)
+            return flattenTransactionsForExport(data);
         } catch (error) {
             console.error("Export error", error);
             return [];
@@ -129,14 +109,14 @@ export default function BarangMasuk() {
         { key: 'idTransaksi', label: 'ID' },
         { key: 'no_faktur', label: 'No.faktur' },
         { key: '_itemName', label: 'Nama Barang' },
-        { key: '_itemHargaSatuan', label: 'Harga satuan' },
+        { key: '_itemHargaSatuan', label: 'Harga satuan', exportFormat: (v) => v == null ? '-' : formatAngkaExport(v) },
         { key: '_itemQty', label: 'Qty' },
         { key: '_itemSatuan', label: 'Satuan' },
-        { key: '_itemTotal', label: 'Total' },
-        { key: 'potongan_harga', label: 'Discount' },
-        { key: '_itemHargaJual', label: 'Harga Jual/Penggantian/DPP' },
-        { key: 'dpp', label: 'DPP Nilai Lain/DPP' },
-        { key: 'pajak_nominal', label: 'PPN' },
+        { key: '_itemTotal', label: 'Total', exportFormat: (v) => v == null ? '-' : formatAngkaExport(v) },
+        { key: '_itemDiscount', label: 'Discount', exportFormat: (v) => formatAngkaExport(v) },
+        { key: '_itemHargaJual', label: 'Harga Jual/Penggantian/DPP', exportFormat: (v) => v == null ? '-' : formatAngkaExport(v) },
+        { key: '_itemDpp', label: 'DPP Nilai Lain/DPP', exportFormat: (v) => formatAngkaExport(v) },
+        { key: '_itemPpn', label: 'PPN', exportFormat: (v) => formatAngkaExport(v) },
         { key: 'keterangan', label: 'Ket' },
         { key: 'tanggal', label: 'Tanggal Faktur', exportFormat: (val) => val ? new Date(val).toLocaleDateString('id-ID') : '-' }
     ];
@@ -300,7 +280,7 @@ export default function BarangMasuk() {
             potongan_harga: potonganHarga,
             uang_muka: uangMuka,
             ppnbm: ppnbm,
-            dpp: subtotalCalc * (11 / 12),
+            dpp: subtotalCalc,
             totalTransaksi: subtotalCalc + pajakNominalCalc,
             items: validItems.map(item => ({
                 ...item,
@@ -400,8 +380,8 @@ export default function BarangMasuk() {
 
     const handlePrintLaporan = async () => {
         setIsProcessing(true);
-        const safeStart = getLocalYYYYMMDD(new Date(startDate));
-        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        const safeStart = getLocalYYYYMMDD(startDate || new Date());
+        const safeEnd = getLocalYYYYMMDD(endDate || new Date());
         try {
             const resp = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
             const allData = Array.isArray(resp?.data) ? resp.data : [];
@@ -553,11 +533,11 @@ export default function BarangMasuk() {
                                             <option value="">Pilih Barang...</option>
                                             {items.map(i => <option key={i.kodeBarang} value={i.kodeBarang}>[{i.satuan_dasar}] {i.nama}</option>)}
                                         </select>
-                                        <input type="number" min="1" required placeholder="Qty" className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.jumlah} onChange={e => handleRowChange(idx, 'jumlah', e.target.value)} />
+                                        <input type="number" step="any" min="1" required placeholder="Qty" className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.jumlah} onChange={e => handleRowChange(idx, 'jumlah', e.target.value)} />
                                         <select className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.satuan_transaksi} onChange={e => handleRowChange(idx, 'satuan_transaksi', e.target.value)}>
                                             {satuanOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                         </select>
-                                        <input type="number" required placeholder="Hrg Modal" className="w-28 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.harga_modal_satuan} onChange={e => handleRowChange(idx, 'harga_modal_satuan', e.target.value)} disabled={formData.sumber === 'Penggantian Retur Vendor'} />
+                                        <input type="number" step="any" required placeholder="Hrg Modal" className="w-28 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.harga_modal_satuan} onChange={e => handleRowChange(idx, 'harga_modal_satuan', e.target.value)} disabled={formData.sumber === 'Penggantian Retur Vendor'} />
                                         <input type="text" readOnly className="w-24 p-2 border rounded-lg text-sm bg-slate-100 text-slate-600:border-blue-500:ring-blue-500" value={item.lokasi_asal || 'Asal...'} title="Otomatis dari Supplier" />
                                         <select required className="w-28 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.lokasi_tujuan} onChange={e => handleRowChange(idx, 'lokasi_tujuan', e.target.value)}>
                                             <option value="">Lok. Tujuan...</option>
@@ -580,30 +560,30 @@ export default function BarangMasuk() {
                     {(() => {
                         const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
-                        const dppVisual = subtotal * (11 / 12);
+                        const dppVisual = subtotal;
                         return (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
-                                        <input type="number" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                                        <input type="number" step="any" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
-                                        <input type="number" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                                        <input type="number" step="any" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
-                                        <input type="number" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                                        <input type="number" step="any" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Dasar Pengenaan Pajak (DPP)</label>
-                                        <input type="text" readOnly className="w-full p-2 border border-slate-200 bg-slate-100 rounded-lg text-sm font-semibold text-slate-600" value={formatRp(dppVisual)} title="Subtotal * (11/12)" />
+                                        <input type="text" readOnly className="w-full p-2 border border-slate-200 bg-slate-100 rounded-lg text-sm font-semibold text-slate-600" value={formatRp(dppVisual)} title="Subtotal Dasar" />
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <label className="text-sm font-medium text-slate-700 whitespace-nowrap">Pajak / PPN (%)</label>
-                                    <input type="number" min="0" max="100" className="w-24 p-2 border rounded-lg text-sm text-center font-bold:border-blue-500:ring-blue-500" value={pajakPersen} onChange={e => setPajakPersen(Number(e.target.value) || 0)} />
+                                    <input type="number" step="any" min="0" max="100" className="w-24 p-2 border rounded-lg text-sm text-center font-bold:border-blue-500:ring-blue-500" value={pajakPersen} onChange={e => setPajakPersen(Number(e.target.value) || 0)} />
                                 </div>
                                 <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-bold">{formatRp(subtotal)}</span></div>
                                 <div className="flex justify-between text-sm"><span className="text-slate-500">PPN ({pajakPersen}%)</span><span className="font-bold text-amber-600">{formatRp(taxNominal)}</span></div>

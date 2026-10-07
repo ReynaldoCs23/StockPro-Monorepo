@@ -84,8 +84,8 @@ export default function BarangReturn() {
     React.useEffect(() => {
         if (!isApiOffline) {
             setIsProcessing(true);
-            const safeStart = getLocalYYYYMMDD(new Date(startDate));
-            const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+            const safeStart = getLocalYYYYMMDD(startDate || new Date());
+            const safeEnd = getLocalYYYYMMDD(endDate || new Date());
             apiCall(`/transactions?category=return&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`)
                 .then(data => {
                     if (data && data.data) {
@@ -106,8 +106,8 @@ export default function BarangReturn() {
 
     const fetchAllForExport = async () => {
         setIsProcessing(true);
-        const safeStart = getLocalYYYYMMDD(new Date(startDate));
-        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        const safeStart = getLocalYYYYMMDD(startDate || new Date());
+        const safeEnd = getLocalYYYYMMDD(endDate || new Date());
         try {
             const data = await apiCall(`/transactions?category=return&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
             return data.data || [];
@@ -378,8 +378,8 @@ export default function BarangReturn() {
 
     const handlePrintLaporan = async () => {
         setIsProcessing(true);
-        const safeStart = getLocalYYYYMMDD(new Date(startDate));
-        const safeEnd = getLocalYYYYMMDD(new Date(endDate));
+        const safeStart = getLocalYYYYMMDD(startDate || new Date());
+        const safeEnd = getLocalYYYYMMDD(endDate || new Date());
         try {
             const resp = await apiCall(`/transactions?category=return&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
             const allData = Array.isArray(resp?.data) ? resp.data : [];

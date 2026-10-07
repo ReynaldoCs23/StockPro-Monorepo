@@ -175,7 +175,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                 {/* Document Header */}
                 <div className="text-center mb-6">
                     <h1 className="text-xl font-bold tracking-widest underline decoration-2 underline-offset-4">{fakturTitle}</h1>
-                    <p className="text-sm mt-2">Nomor Faktur: {data.idTransaksi}</p>
+                    <p className="text-sm mt-2">Nomor Faktur: {data.no_faktur || data.idTransaksi}</p>
                     <p className="text-sm mt-0.5">Tanggal Faktur: {new Date(data.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                 </div>
 

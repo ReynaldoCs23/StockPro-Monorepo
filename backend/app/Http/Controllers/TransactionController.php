@@ -666,7 +666,7 @@ class TransactionController extends Controller {
         $dpp = $payload['dpp'] ?? 0;
         
         if (empty($dpp) || $dpp == 0) {
-            $dpp = $subtotal_for_dpp * (11 / 12);
+            $dpp = $subtotal_for_dpp;
         }
 
         // 1. Simpan Header ke tabel transactions

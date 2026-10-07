@@ -47,6 +47,67 @@ export const exportToCSV = (data, filename) => {
     a.click();
 };
 
+// 5b. Format Rupiah untuk Export CSV (maks 2 desimal, contoh: "Rp 1.965.405,60")
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+export const formatRpExport = (angka) => 'Rp ' + new Intl.NumberFormat('id-ID', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+}).format(round2(angka));
+
+// 5b-2. Format angka biasa untuk Export CSV agar terbaca sebagai ANGKA di Excel locale Indonesia
+//       (tanpa pemisah ribuan, desimal pakai koma, maks 2 desimal). Contoh: 1965405.5999 -> "1965405,6"
+export const formatAngkaExport = (angka) => String(round2(angka)).replace('.', ',');
+
+// 5c. Flatten transaksi (1 item = 1 baris) dengan nilai keuangan per item
+//     Discount, DPP, dan PPN header dialokasikan proporsional sesuai porsi total item.
+export const flattenTransactionsForExport = (transactions = []) => {
+    const rows = [];
+    transactions.forEach(trx => {
+        const items = Array.isArray(trx.items) ? trx.items : [];
+        if (items.length === 0) {
+            rows.push({
+                ...trx,
+                _itemTotal: null,
+                _itemDiscount: Number(trx.potongan_harga) || 0,
+                _itemHargaJual: null,
+                _itemDpp: Number(trx.dpp) || 0,
+                _itemPpn: Number(trx.pajak_nominal) || 0
+            });
+            return;
+        }
+
+        const lines = items.map(item => {
+            const qty = Number(item.jumlah_transaksi ?? item.jumlah) || 0;
+            const harga = Number(item.harga_satuan) || 0;
+            return { item, qty, harga, total: round2(qty * harga) };
+        });
+        const subtotal = lines.reduce((s, l) => s + l.total, 0);
+        const discount = Number(trx.potongan_harga) || 0;
+        const pajakPersen = Number(trx.pajak_persen) || 0;
+        const storedDpp = Number(trx.dpp) || 0;
+        const storedPpn = Number(trx.pajak_nominal) || 0;
+
+        lines.forEach(({ item, qty, harga, total }) => {
+            const share = subtotal > 0 ? total / subtotal : 1 / lines.length;
+            const dpp = storedDpp > 0 ? storedDpp * share : total * 11 / 12;
+            const ppn = storedPpn > 0 ? storedPpn * share : dpp * 12 / 100 * (pajakPersen > 0 ? 1 : 0);
+            rows.push({
+                ...trx,
+                _itemName: item.namaBarang || item.item_nama || '-',
+                _itemHargaSatuan: harga,
+                _itemQty: qty,
+                _itemSatuan: item.satuan_transaksi || '-',
+                _itemTotal: total,
+                _itemDiscount: round2(discount * share),
+                _itemHargaJual: total,
+                _itemDpp: round2(dpp),
+                _itemPpn: round2(ppn)
+            });
+        });
+    });
+    return rows;
+};
+
 // 6. Mendapatkan Tanggal Hari Ini (Format YYYY-MM-DD)
 export const getLocalYYYYMMDD = (dateStr = null) => {
     const d = dateStr ? new Date(dateStr) : new Date();
