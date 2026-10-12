@@ -2,3 +2,9 @@
 /frontend/node_modules
 /backend/.env
 /frontend/.env
+
+# AI Engine
+/ai-engine/.env
+/ai-engine/venv/
+/ai-engine/__pycache__/
+*.pyc
