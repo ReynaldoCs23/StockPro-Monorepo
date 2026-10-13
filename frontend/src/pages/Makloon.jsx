@@ -293,8 +293,9 @@ export default function Makloon() {
         }
     };
 
-    const produkJadiOptions = items.filter(i => i.tipeBarang === 'Produk Jadi' || i.tipe_barang === 'barang_jadi');
-    const bahanBakuOptions = items.filter(i => i.tipeBarang !== 'Produk Jadi' && i.tipe_barang !== 'barang_jadi');
+    const isProdukJadi = (i) => ['produk jadi', 'barang jadi'].includes((i.tipeBarang || '').toLowerCase()) || i.tipe_barang === 'barang_jadi';
+    const produkJadiOptions = items.filter(i => isProdukJadi(i));
+    const bahanBakuOptions = items.filter(i => !isProdukJadi(i));
     const vendorOptions = suppliers?.filter(s => s.tipe_partner === 'vendor' || s.idSupplier.startsWith('VEN')) || [];
 
     return (

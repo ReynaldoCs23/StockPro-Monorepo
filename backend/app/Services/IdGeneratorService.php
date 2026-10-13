@@ -43,11 +43,22 @@ class IdGeneratorService
 
     /**
      * Generate Item Code
-     * RM-XXXX (Bahan Baku/Kemasan) or BRG-XXXX (Produk Jadi)
+     * RM-XXXX (Bahan Baku), BRG-XXXX (Barang Jadi), INV-XXXX (Barang Non Produksi/Inventaris), OTH-XXXX (Lainnya)
      */
     public function generateItemCode($tipeBarang)
     {
-        $prefix = in_array($tipeBarang, ['Bahan Baku', 'Kemasan']) ? 'RM-' : 'BRG-';
+        $tipe = strtolower(trim($tipeBarang ?? ''));
+        if ($tipe === 'bahan baku' || $tipe === 'kemasan') {
+            $prefix = 'RM-';
+        } elseif (str_contains($tipe, 'non produksi') || str_contains($tipe, 'inventaris')) {
+            $prefix = 'INV-';
+        } elseif ($tipe === 'jasa') {
+            $prefix = 'SRV-';
+        } elseif ($tipe === 'lainnya') {
+            $prefix = 'OTH-';
+        } else {
+            $prefix = 'BRG-';
+        }
         return $this->getLatestSequence('items', 'kodeBarang', $prefix, 4);
     }
 

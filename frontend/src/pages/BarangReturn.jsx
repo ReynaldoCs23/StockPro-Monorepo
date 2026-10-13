@@ -422,11 +422,11 @@ export default function BarangReturn() {
 
                 {/* Data Table - Unified with DataTable component */}
                 <DataTable
-                    title="Riwayat Return"
+                    title="Transaksi Return"
                     data={filteredReturns}
                     idKey="idTransaksi"
                     onExportCSV={fetchAllForExport}
-                    filename="Barang_Return"
+                    filename="Transaksi_Return"
                     onDelete={can('delete_barang_return') ? handleDelete : null}
                     onPrint={(row) => setPrintData(row)}
                     onPrintLaporan={handlePrintLaporan}
@@ -453,7 +453,7 @@ export default function BarangReturn() {
                 />
             </div>
 
-            {!isPrintingRow && <ReportPrintTemplate title="Laporan Transaksi Barang Return" type="transaction" data={fullPrintData || filteredReturns} columns={returnColumns} />}
+            {!isPrintingRow && <ReportPrintTemplate title="Laporan Transaksi Return" type="transaction" data={fullPrintData || filteredReturns} columns={returnColumns} />}
 
             {/* Detail Modal */}
             <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={`Detail Transaksi: ${detailData?.idTransaksi}`} width="max-w-3xl">

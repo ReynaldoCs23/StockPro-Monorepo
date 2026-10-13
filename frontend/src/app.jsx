@@ -196,9 +196,9 @@ function MainApp() {
         { 
             id: 'inventory', label: 'Inventory', icon: Package, isDropdown: true,
             children: [
-                { id: 'masuk', path: '/inventory/masuk', label: 'Barang Masuk', icon: ArrowDownToLine, permission: 'view_barang_masuk' },
-                { id: 'keluar', path: '/inventory/keluar', label: 'Barang Keluar', icon: ArrowUpFromLine, permission: 'view_barang_keluar' },
-                { id: 'return', path: '/inventory/return', label: 'Barang Return', icon: Undo, permission: 'view_barang_return' },
+                { id: 'masuk', path: '/inventory/masuk', label: 'Transaksi Masuk', icon: ArrowDownToLine, permission: 'view_barang_masuk' },
+                { id: 'keluar', path: '/inventory/keluar', label: 'Transaksi Keluar', icon: ArrowUpFromLine, permission: 'view_barang_keluar' },
+                { id: 'return', path: '/inventory/return', label: 'Transaksi Return', icon: Undo, permission: 'view_barang_return' },
                 { id: 'adjustment', path: '/inventory/adjustment', label: 'Penyesuaian Stok', icon: ClipboardList, permission: 'view_penyesuaian_stok' },
                 { id: 'makloon', path: '/inventory/makloon', label: 'Makloon', icon: Factory, permission: 'view_makloon' },
             ]

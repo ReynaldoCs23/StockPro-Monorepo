@@ -15,10 +15,10 @@ export default function ReportTemplate({ reportType, dateRange, data, companyNam
     let entityLabel = 'Entitas';
 
     if (reportType === 'inbound') {
-        title = 'Laporan Barang Masuk';
+        title = 'Laporan Transaksi Masuk';
         entityLabel = 'Nama Supplier';
     } else if (reportType === 'outbound') {
-        title = 'Laporan Barang Keluar';
+        title = 'Laporan Transaksi Keluar';
         entityLabel = 'Tujuan / Pelanggan';
     } else if (reportType === 'return') {
         title = 'Laporan Return Vendor';

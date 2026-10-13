@@ -237,8 +237,8 @@ export default function TransactionCalendar() {
                                         <tr key={ev.idTransaksi} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="p-4 font-bold text-slate-700">{ev.idTransaksi}</td>
                                             <td className="p-4 font-medium text-slate-500">
-                                                {ev.typeGroup === 'IN' && 'Barang Masuk'}
-                                                {ev.typeGroup === 'OUT' && 'Barang Keluar'}
+                                                {ev.typeGroup === 'IN' && 'Transaksi Masuk'}
+                                                {ev.typeGroup === 'OUT' && 'Transaksi Keluar'}
                                                 {ev.typeGroup === 'RET' && 'Return'}
                                             </td>
                                             <td className="p-4 text-right flex flex-col items-end justify-center gap-2">

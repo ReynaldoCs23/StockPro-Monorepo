@@ -31,9 +31,9 @@ function PermissionGrid({ allPermissions, userPermissions, setUserPermissions })
 
     const moduleLabels = {
         dashboard: 'Dashboard',
-        barang_masuk: 'Barang Masuk',
-        barang_keluar: 'Barang Keluar',
-        barang_return: 'Barang Return',
+        barang_masuk: 'Transaksi Masuk',
+        barang_keluar: 'Transaksi Keluar',
+        barang_return: 'Transaksi Return',
         penyesuaian_stok: 'Penyesuaian Stok',
         makloon: 'Makloon',
         master_barang: 'Master Barang',

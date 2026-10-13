@@ -268,11 +268,11 @@ class DashboardController extends Controller {
                     ];
                 });
 
-            // Slow-moving: items with stock > 0 but lowest/no outbound in period (Produk Jadi only)
+            // Slow-moving: items with stock > 0 but lowest/no outbound in period (Barang Jadi / Produk Jadi only)
             $slowMoving = DB::table('items')
                 ->select('kodeBarang', 'nama as namaBarang', 'stok', 'last_sold_at')
                 ->where('stok', '>', 0)
-                ->whereRaw('LOWER(tipeBarang) = ?', ['produk jadi'])
+                ->whereRaw('LOWER(tipeBarang) IN (?, ?)', ['produk jadi', 'barang jadi'])
                 ->orderByRaw('last_sold_at IS NULL DESC, last_sold_at ASC')
                 ->limit(5)
                 ->get()
@@ -303,9 +303,14 @@ class DashboardController extends Controller {
 
             $deadStock = DB::table('items')
                 ->leftJoin(DB::raw('(SELECT transaction_details.kodeBarang FROM transaction_details JOIN transactions ON transaction_details.idTransaksi = transactions.idTransaksi WHERE transactions.type = "OUT" AND transactions.tanggal >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY transaction_details.kodeBarang) as recent_out'), 'items.kodeBarang', '=', 'recent_out.kodeBarang')
-                ->select('items.kodeBarang', 'items.nama as namaBarang', 'items.stok')
+                ->select('items.kodeBarang', 'items.nama as namaBarang', 'items.stok', 'items.tipeBarang')
                 ->where('items.stok', '>', 0)
                 ->whereNull('recent_out.kodeBarang')
+                ->where(function($q) {
+                    $q->whereRaw('LOWER(COALESCE(items.tipeBarang, "")) NOT LIKE ?', ['%inventaris%'])
+                      ->whereRaw('LOWER(COALESCE(items.tipeBarang, "")) NOT LIKE ?', ['%non produksi%'])
+                      ->whereRaw('LOWER(COALESCE(items.tipeBarang, "")) NOT LIKE ?', ['%jasa%']);
+                })
                 ->limit(5)
                 ->get();
 

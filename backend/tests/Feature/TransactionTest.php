@@ -40,10 +40,12 @@ class TransactionTest extends TestCase
         $permInWeb = Permission::firstOrCreate(['name' => 'create_barang_masuk', 'guard_name' => 'web']);
         $permOutWeb = Permission::firstOrCreate(['name' => 'create_barang_keluar', 'guard_name' => 'web']);
         $permRetWeb = Permission::firstOrCreate(['name' => 'create_barang_return', 'guard_name' => 'web']);
+        $permDelOutWeb = Permission::firstOrCreate(['name' => 'delete_barang_keluar', 'guard_name' => 'web']);
         
         $this->admin->givePermissionTo($permInWeb);
         $this->admin->givePermissionTo($permOutWeb);
         $this->admin->givePermissionTo($permRetWeb);
+        $this->admin->givePermissionTo($permDelOutWeb);
     }
 
     public function test_can_create_inbound_transaction()
@@ -297,5 +299,164 @@ class TransactionTest extends TestCase
             'idTransaksi' => $generatedId,
             'totalTransaksi' => $expectedTotalWithTax 
         ]);
+    }
+
+    public function test_outbound_jasa_does_not_require_physical_stock_or_deduct_inventory()
+    {
+        $jasa = Item::create([
+            'kodeBarang' => 'SRV-0001',
+            'nama' => 'Jasa SIPEMA ONLINE',
+            'stok' => 0,
+            'stok_booking' => 0,
+            'tipeBarang' => 'Jasa',
+            'kategori' => 'Jasa',
+            'satuan_dasar' => 'Laporan',
+            'hargaJual' => 202.70,
+            'hargaBeli' => 0
+        ]);
+
+        $customer = Customer::create([
+            'idPelanggan' => 'CUST-TEST-01',
+            'nama' => 'Test Customer',
+            'alamat' => 'Alamat Customer',
+            'npwp' => '000000000',
+            'telp' => '08123456789'
+        ]);
+
+        $payload = [
+            'idTransaksi' => 'INV-OUT-0099',
+            'tanggal' => now()->format('Y-m-d'),
+            'sumber_tujuan' => 'Customer',
+            'namaPembeli' => $customer->nama,
+            'items' => [
+                [
+                    'kodeBarang' => $jasa->kodeBarang,
+                    'namaBarang' => $jasa->nama,
+                    'jumlah' => 68506,
+                    'satuan_transaksi' => 'Laporan',
+                    'harga_satuan' => 202.70,
+                ]
+            ],
+            'log_user' => $this->admin->namaLengkap,
+            'log_detail' => 'Penjualan Jasa'
+        ];
+
+        Sanctum::actingAs($this->admin, ['*']);
+        $response = $this->postJson('/api/transaction/OUT', $payload);
+        $response->assertStatus(200);
+
+        $trxId = $response->json('idTransaksi');
+
+        // Approve transaction
+        $approveResponse = $this->postJson('/api/transaction/' . $trxId . '/approve');
+        $approveResponse->assertStatus(200);
+
+        // Assert Jasa physical stock remains 0 (not negative, not decremented)
+        $jasa->refresh();
+        $this->assertEquals(0, $jasa->stok);
+        $this->assertEquals(0, $jasa->stok_booking);
+
+        // Assert transaction details recorded
+        $this->assertDatabaseHas('transaction_details', [
+            'idTransaksi' => $trxId,
+            'kodeBarang' => $jasa->kodeBarang,
+            'jumlah' => 68506,
+        ]);
+    }
+
+    public function test_can_delete_void_outbound_transaction()
+    {
+        $item = Item::create([
+            'kodeBarang' => 'ITM-VOID-01',
+            'nama' => 'Item For Void Test',
+            'stok' => 10,
+            'stok_booking' => 0,
+            'tipeBarang' => 'Barang Jadi',
+            'kategori' => 'Kategori A',
+            'satuan_dasar' => 'Pcs',
+            'hargaJual' => 1000,
+            'hargaBeli' => 500
+        ]);
+
+        $customer = Customer::create([
+            'idPelanggan' => 'CUST-VOID-01',
+            'nama' => 'Test Void Customer',
+            'alamat' => 'Alamat Void',
+            'npwp' => '000000000',
+            'telp' => '08123456789'
+        ]);
+
+        ItemBatch::create([
+            'id_batch' => 'BCH-VOID-001',
+            'kodeBarang' => $item->kodeBarang,
+            'idTransaksi_masuk' => 'INV-IN-VOID',
+            'tanggal_masuk' => now()->subDay()->format('Y-m-d H:i:s'),
+            'qty_awal' => 10,
+            'qty_sisa' => 10,
+            'qty_booking' => 0,
+            'harga_modal_satuan' => 500,
+            'lokasi_rak' => 'Rak A',
+        ]);
+
+        $payload = [
+            'idTransaksi' => 'INV-OUT-VOID-01',
+            'tanggal' => now()->format('Y-m-d'),
+            'sumber_tujuan' => 'Customer',
+            'namaPembeli' => $customer->nama,
+            'items' => [
+                [
+                    'kodeBarang' => $item->kodeBarang,
+                    'namaBarang' => $item->nama,
+                    'jumlah' => 5,
+                    'satuan_transaksi' => 'Pcs',
+                    'harga_satuan' => 1000,
+                ]
+            ],
+            'log_user' => $this->admin->namaLengkap,
+            'log_detail' => 'Penjualan Test Void'
+        ];
+
+        Sanctum::actingAs($this->admin, ['*']);
+        
+        // 1. Create OUT transaction (draft)
+        $response = $this->postJson('/api/transaction/OUT', $payload);
+        $response->assertStatus(200);
+        $trxId = $response->json('idTransaksi');
+
+        // 2. Approve OUT transaction (stok berkurang dari 10 menjadi 5)
+        $this->postJson('/api/transaction/' . $trxId . '/approve')->assertStatus(200);
+        $item->refresh();
+        $this->assertEquals(5, $item->stok);
+
+        // 3. Void OUT transaction (stok dikembalikan dari 5 menjadi 10)
+        $voidResponse = $this->postJson('/api/transaction/' . $trxId . '/void');
+        $voidResponse->assertStatus(200);
+        $item->refresh();
+        $this->assertEquals(10, $item->stok);
+
+        // Assert transaction status is void
+        $this->assertDatabaseHas('transactions', [
+            'idTransaksi' => $trxId,
+            'status' => 'void'
+        ]);
+
+        // 4. Delete the void transaction
+        $delResponse = $this->deleteJson('/api/transaction/OUT/' . $trxId, [
+            'log_user' => $this->admin->namaLengkap,
+            'log_detail' => 'Hapus Transaksi Void'
+        ]);
+        $delResponse->assertStatus(200);
+
+        // Assert transaction and details are deleted permanently
+        $this->assertDatabaseMissing('transactions', [
+            'idTransaksi' => $trxId
+        ]);
+        $this->assertDatabaseMissing('transaction_details', [
+            'idTransaksi' => $trxId
+        ]);
+
+        // Assert stock remains untouched at 10
+        $item->refresh();
+        $this->assertEquals(10, $item->stok);
     }
 }

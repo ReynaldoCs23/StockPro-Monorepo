@@ -33,6 +33,7 @@ export default function BarangMasuk() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [printData, setPrintData] = useState(null);
     const [filterType, setFilterType] = useState('');
+    const [filterItemType, setFilterItemType] = useState('');
 
     const can = (perm) => isAdminOrSuperadmin || userPermissions.includes(perm);
     const [detailData, setDetailData] = useState(null);
@@ -57,7 +58,7 @@ export default function BarangMasuk() {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, startDate, endDate]);
+    }, [filterType, filterItemType, startDate, endDate]);
 
     const fetchTransactions = async () => {
         if (!isApiOffline) {
@@ -65,7 +66,7 @@ export default function BarangMasuk() {
             const safeStart = getLocalYYYYMMDD(startDate || new Date());
             const safeEnd = getLocalYYYYMMDD(endDate || new Date());
             try {
-                const data = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`);
+                const data = await apiCall(`/transactions?category=inbound&filter=${filterType}&item_type=${filterItemType}&start_date=${safeStart}&end_date=${safeEnd}&page=${currentPage}`);
                 if (data && data.data) {
                     setInbound(data.data);
                     setLastPage(data.last_page || 1);
@@ -86,14 +87,14 @@ export default function BarangMasuk() {
 
     useEffect(() => {
         fetchTransactions();
-    }, [filterType, startDate, endDate, currentPage]);
+    }, [filterType, filterItemType, startDate, endDate, currentPage]);
 
     const fetchAllForExport = async () => {
         setIsProcessing(true);
         const safeStart = getLocalYYYYMMDD(startDate || new Date());
         const safeEnd = getLocalYYYYMMDD(endDate || new Date());
         try {
-            const response = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
+            const response = await apiCall(`/transactions?category=inbound&filter=${filterType}&item_type=${filterItemType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=all`);
             const data = response.data || [];
             // Flatten: 1 item = 1 row (nilai keuangan dihitung per item)
             return flattenTransactionsForExport(data);
@@ -192,6 +193,7 @@ export default function BarangMasuk() {
 
     const handleSelectMakloonRef = (refId) => {
         setFormData(prev => ({ ...prev, idReferensi: refId }));
+        if (!refId) return;
         const ref = makloonRefs.find(r => r.idTransaksi === refId);
         if (ref && ref.target_kode_barang) {
             const targetItem = items.find(i => i.kodeBarang === ref.target_kode_barang);
@@ -243,12 +245,12 @@ export default function BarangMasuk() {
     };
 
     const handleDelete = async (id) => {
-        if (!confirm(`Hapus draft transaksi Barang Masuk ${id}? Data akan dihapus permanen.`)) return;
+        if (!confirm(`Hapus draft Transaksi Masuk ${id}? Data akan dihapus permanen.`)) return;
         try {
             if (!isApiOffline) {
                 await apiCall(`/transaction/IN/${id}`, 'DELETE', {
                     log_user: currentUser.namaLengkap,
-                    log_detail: `Membatalkan Barang Masuk: ${id}`
+                    log_detail: `Membatalkan Transaksi Masuk: ${id}`
                 });
             }
 
@@ -270,6 +272,8 @@ export default function BarangMasuk() {
         const finalId = editId || generateId(idPrefix, inbound, 'idTransaksi');
 
         const subtotalCalc = validItems.reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
+        const subtotalDasar = Math.max(0, subtotalCalc - Number(potonganHarga || 0) - Number(uangMuka || 0));
+        const dppCalc = Math.round(subtotalDasar * 11 / 12 * 100) / 100;
         const pajakNominalCalc = subtotalCalc * (pajakPersen / 100);
 
         const payload = {
@@ -280,7 +284,7 @@ export default function BarangMasuk() {
             potongan_harga: potonganHarga,
             uang_muka: uangMuka,
             ppnbm: ppnbm,
-            dpp: subtotalCalc,
+            dpp: dppCalc,
             totalTransaksi: subtotalCalc + pajakNominalCalc,
             items: validItems.map(item => ({
                 ...item,
@@ -325,7 +329,7 @@ export default function BarangMasuk() {
                 return it;
             }));
 
-            if (isApiOffline && !editId) addSimulatedLog('CREATE', 'Barang Masuk', `Input Barang: ${finalId}`);
+            if (isApiOffline && !editId) addSimulatedLog('CREATE', 'Transaksi Masuk', `Input Barang: ${finalId}`);
             setToast({ message: "Transaksi berhasil disimpan!", type: "success" });
             setModalOpen(false);
         } catch (e) { setToast({ message: "Gagal menyimpan: " + e.message, type: "error" }); }
@@ -383,7 +387,7 @@ export default function BarangMasuk() {
         const safeStart = getLocalYYYYMMDD(startDate || new Date());
         const safeEnd = getLocalYYYYMMDD(endDate || new Date());
         try {
-            const resp = await apiCall(`/transactions?category=inbound&filter=${filterType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
+            const resp = await apiCall(`/transactions?category=inbound&filter=${filterType}&item_type=${filterItemType}&start_date=${safeStart}&end_date=${safeEnd}&per_page=10000`);
             const allData = Array.isArray(resp?.data) ? resp.data : [];
             if (allData.length === 0) {
                 setToast({ message: "Tidak ada data untuk dicetak.", type: "error" });
@@ -418,19 +422,34 @@ export default function BarangMasuk() {
                     <StatCardMini title="Total Qty Masuk" value={globalSummary.total_qty} icon={Package} bgClass="bg-blue-50" colorClass="text-blue-600" />
                 </div>
 
-                <DataTable title="Barang Masuk" data={filteredInbound} idKey="idTransaksi" filename="Barang_Masuk"
+                <DataTable title="Transaksi Masuk" data={filteredInbound} idKey="idTransaksi" filename="Transaksi_Masuk"
                     onExportCSV={fetchAllForExport}
                     exportColumns={exportColumnsCSV}
                     onPrintLaporan={handlePrintLaporan}
                     customFilter={
-                        <div className="relative mr-2 w-full md:w-auto">
-                            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
-                                <option value="">Semua Transaksi</option>
-                                <option value="supplier">Dari Supplier</option>
-                                <option value="makloon">Dari Vendor Makloon</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                        <div className="flex flex-col md:flex-row gap-2 mr-2 w-full md:w-auto">
+                            <div className="relative w-full md:w-auto">
+                                <select id="filter-jenis-barang-masuk" value={filterItemType} onChange={e => setFilterItemType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
+                                    <option value="">Semua Jenis Barang</option>
+                                    <option value="bahan_baku">Bahan Baku</option>
+                                    <option value="barang_jadi">Barang Jadi</option>
+                                    <option value="non_produksi">Barang Non Produksi / Inventaris</option>
+                                    <option value="jasa">Jasa</option>
+                                    <option value="lainnya">Lainnya</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                </div>
+                            </div>
+                            <div className="relative w-full md:w-auto">
+                                <select id="filter-jenis-transaksi-masuk" value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
+                                    <option value="">Semua Jenis Transaksi</option>
+                                    <option value="supplier">Pembelian</option>
+                                    <option value="makloon">Jasa Makloon</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                </div>
                             </div>
                         </div>
                     }
@@ -454,7 +473,7 @@ export default function BarangMasuk() {
                 />
             </div>
             
-            {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Masuk" type="transaction" data={fullPrintData || filteredInbound} columns={reportColumns} />}
+            {!isPrintingRow && <ReportPrintTemplate title="Laporan Transaksi Masuk" type="transaction" data={fullPrintData || filteredInbound} columns={reportColumns} />}
 
             <ConfirmModal
                 isOpen={!!confirmAction}
@@ -478,7 +497,7 @@ export default function BarangMasuk() {
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Sumber Barang</label>
-                            <select className="w-full p-2.5 border border-slate-200 rounded-xl:border-blue-500:ring-blue-500" value={formData.sumber} onChange={e => setFormData({ ...formData, sumber: e.target.value, namaSupplier: '' })}>
+                            <select className="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" value={formData.sumber} onChange={e => setFormData({ ...formData, sumber: e.target.value, namaSupplier: '', idReferensi: '' })}>
                                 <option value="Dari Supplier">Pembelian dari Supplier</option>
                                 <option value="Terima dari Vendor Makloon">Terima dari Vendor Makloon</option>
                             </select>
@@ -503,9 +522,9 @@ export default function BarangMasuk() {
                         </div>
                         {isMakloonIn && (
                             <div className="col-span-2">
-                                <label className="block text-sm font-medium mb-1">Pilih Referensi MKL-OUT</label>
-                                <select required className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none:border-blue-500:ring-blue-500" value={formData.idReferensi || ''} onChange={e => handleSelectMakloonRef(e.target.value)}>
-                                    <option value="">Pilih transaksi MKL-OUT...</option>
+                                <label className="block text-sm font-medium mb-1 text-slate-700">Pilih Referensi MKL-OUT <span className="text-xs text-slate-400 font-normal">(Opsional)</span></label>
+                                <select className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={formData.idReferensi || ''} onChange={e => handleSelectMakloonRef(e.target.value)}>
+                                    <option value="">Tanpa Referensi (Input Langsung)</option>
                                     {makloonRefs.map(ref => (
                                         <option key={ref.idTransaksi} value={ref.idTransaksi}>
                                             {ref.idTransaksi} — {ref.entitas} → {ref.target_item?.nama || ref.target_kode_barang} ({new Date(ref.tanggal).toLocaleDateString('id-ID')})
@@ -560,7 +579,8 @@ export default function BarangMasuk() {
                     {(() => {
                         const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
-                        const dppVisual = subtotal;
+                        const subtotalDasar = Math.max(0, subtotal - Number(potonganHarga || 0) - Number(uangMuka || 0));
+                        const dppVisual = Math.round(subtotalDasar * 11 / 12 * 100) / 100;
                         return (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">

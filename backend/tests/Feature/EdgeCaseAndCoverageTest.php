@@ -190,6 +190,31 @@ class EdgeCaseAndCoverageTest extends TestCase
 
     public function test_dashboard_endpoint_returns_success()
     {
+        // Seed an inventaris item and a barang jadi item with stock > 0
+        \App\Models\Item::create([
+            'kodeBarang' => 'INV-TEST-99',
+            'nama' => 'Meja Kantor Inventaris',
+            'stok' => 5,
+            'stok_booking' => 0,
+            'tipeBarang' => 'Barang Non Produksi/Inventaris',
+            'kategori' => 'Inventaris',
+            'satuan_dasar' => 'Unit',
+            'hargaJual' => 0,
+            'hargaBeli' => 500000
+        ]);
+
+        \App\Models\Item::create([
+            'kodeBarang' => 'BRG-DEAD-99',
+            'nama' => 'Barang Jadi Dead Stock',
+            'stok' => 10,
+            'stok_booking' => 0,
+            'tipeBarang' => 'Barang Jadi',
+            'kategori' => 'Produk',
+            'satuan_dasar' => 'Pcs',
+            'hargaJual' => 20000,
+            'hargaBeli' => 10000
+        ]);
+
         Sanctum::actingAs($this->admin, ['*']);
 
         $response = $this->getJson('/api/dashboard');
@@ -199,7 +224,12 @@ class EdgeCaseAndCoverageTest extends TestCase
             'penjualanDistributor',
             'labaBersih',
             'chartData',
+            'deadStock',
         ]);
+
+        $deadStockCodes = collect($response->json('deadStock'))->pluck('kodeBarang')->toArray();
+        $this->assertNotContains('INV-TEST-99', $deadStockCodes, 'Inventaris item should not be in deadStock');
+        $this->assertContains('BRG-DEAD-99', $deadStockCodes, 'Barang Jadi item should be in deadStock');
     }
 
     public function test_api_responses_always_return_arrays_for_list_data()

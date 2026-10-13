@@ -127,11 +127,13 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
     const potonganHarga = Number(data.potongan_harga || 0);
     const uangMuka = Number(data.uang_muka || 0);
     const ppnbm = Number(data.ppnbm || 0);
-    const dpp = Number(data.dpp || (hargaJualTotal - potonganHarga - uangMuka));
+    const subtotalDasar = Math.max(0, hargaJualTotal - potonganHarga - uangMuka);
+    const fallbackDpp = Math.round(subtotalDasar * 11 / 12 * 100) / 100;
+    const dpp = data.dpp !== undefined && data.dpp !== null && Number(data.dpp) > 0 ? Number(data.dpp) : fallbackDpp;
     const pajakPersen = Number(data.pajak_persen || 0);
     const ppn = Number(data.pajak_nominal || 0) || (dpp * pajakPersen / 100);
     // grandTotal from DB is best, fallback to calculation if missing
-    const grandTotal = data.totalTransaksi ? Number(data.totalTransaksi) : (dpp + ppn + ppnbm);
+    const grandTotal = data.totalTransaksi ? Number(data.totalTransaksi) : (subtotalDasar + ppn + ppnbm);
 
     // Signature utilities
     const extractCity = (address) => {

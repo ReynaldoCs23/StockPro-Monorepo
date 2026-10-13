@@ -106,6 +106,31 @@ class TransactionController extends Controller {
             $query->where('transactions.tanggal', '>=', now()->subDays(7));
         }
 
+        // FILTER JENIS BARANG (berdasarkan tipeBarang item di detail transaksi)
+        $itemType = strtolower(trim((string) $request->query('item_type', '')));
+        if ($itemType !== '' && $itemType !== 'all') {
+            $query->whereExists(function ($sub) use ($itemType) {
+                $sub->select(DB::raw(1))
+                    ->from('transaction_details as td_f')
+                    ->join('items as it_f', 'td_f.kodeBarang', '=', 'it_f.kodeBarang')
+                    ->whereColumn('td_f.idTransaksi', 'transactions.idTransaksi');
+                if ($itemType === 'bahan_baku') {
+                    $sub->whereRaw('LOWER(it_f.tipeBarang) IN (?, ?)', ['bahan baku', 'kemasan']);
+                } elseif ($itemType === 'barang_jadi') {
+                    $sub->whereRaw('LOWER(it_f.tipeBarang) IN (?, ?)', ['barang jadi', 'produk jadi']);
+                } elseif ($itemType === 'jasa') {
+                    $sub->whereRaw('LOWER(it_f.tipeBarang) = ?', ['jasa']);
+                } elseif ($itemType === 'non_produksi') {
+                    $sub->where(function ($w) {
+                        $w->whereRaw('LOWER(it_f.tipeBarang) LIKE ?', ['%non produksi%'])
+                          ->orWhereRaw('LOWER(it_f.tipeBarang) LIKE ?', ['%inventaris%']);
+                    });
+                } elseif ($itemType === 'lainnya') {
+                    $sub->whereRaw('LOWER(it_f.tipeBarang) = ?', ['lainnya']);
+                }
+            });
+        }
+
         if ($request->query('unused_only') === 'true') {
             $usedRefs = DB::table('transactions')
                 ->where('type', 'RET')
@@ -352,6 +377,11 @@ class TransactionController extends Controller {
             foreach ($request->items as $item) {
                 $itemMaster = DB::table('items')->where('kodeBarang', $item['kodeBarang'])->first();
                 if ($itemMaster) {
+                    $isJasa = strtolower(trim($itemMaster->tipeBarang ?? '')) === 'jasa';
+                    if ($isJasa) {
+                        continue;
+                    }
+
                     $satuanTransaksi = $item['satuan_transaksi'] ?? null;
                     $multiplier = 1;
                     if ($satuanTransaksi && $satuanTransaksi === $itemMaster->satuan_besar) {
@@ -522,17 +552,18 @@ class TransactionController extends Controller {
         if (!$trx) {
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
-        if (!in_array(strtolower($trx->status), ['draft', 'scheduled'])) {
+        if (!in_array(strtolower($trx->status), ['draft', 'scheduled', 'void'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal: Hanya transaksi berstatus Draft atau Scheduled yang dapat dihapus permanen.'
+                'message' => 'Gagal: Hanya transaksi berstatus Draft, Scheduled, atau Void yang dapat dihapus permanen.'
             ], 403);
         }
 
         DB::beginTransaction();
         try {
             $this->revertTransaction($id);
-            $this->writeLog($request->log_user, 'DELETE', 'transactions', $request->log_detail ?? "Hapus Transaksi Draft $id");
+            $statusLabel = ucfirst($trx->status);
+            $this->writeLog($request->log_user, 'DELETE', 'transactions', $request->log_detail ?? "Hapus Transaksi {$statusLabel} $id");
             DB::commit();
             \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Transaksi"));
@@ -575,8 +606,11 @@ class TransactionController extends Controller {
                 $hargaModalSatuanBase = round(floatval($detail->harga_satuan) / $multiplier, 2);
 
                 if ($trx->type === 'OUT') {
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah, ['last_sold_at' => Carbon::now()]);
+                    $isJasa = strtolower(trim($itemMaster->tipeBarang ?? '')) === 'jasa';
+                    if (!$isJasa) {
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah, ['last_sold_at' => Carbon::now()]);
+                    }
                 } elseif ($trx->type === 'IN') {
                     \App\Models\ItemBatch::create([
                         'id_batch' => 'BCH-' . $trx->idTransaksi . '-' . uniqid(),
@@ -665,8 +699,15 @@ class TransactionController extends Controller {
         $ppnbm = $payload['ppnbm'] ?? 0;
         $dpp = $payload['dpp'] ?? 0;
         
-        if (empty($dpp) || $dpp == 0) {
-            $dpp = $subtotal_for_dpp;
+        $base_subtotal = max(0, $subtotal_for_dpp - $potongan_harga - $uang_muka);
+        $isOutboundPenjualan = ($type === 'OUT' && !str_starts_with($payload['idTransaksi'] ?? '', 'MKL-OUT'));
+        if ($type === 'IN' || $type === 'MAKLOON_IN' || $isOutboundPenjualan) {
+            // Untuk barang masuk dan penjualan keluar, DPP dihitung: (Subtotal - Potongan - Uang Muka) * 11 / 12
+            if (empty($dpp) || $dpp == 0 || abs((float)$dpp - (float)$subtotal_for_dpp) < 0.01) {
+                $dpp = round($base_subtotal * 11 / 12, 2);
+            }
+        } elseif (empty($dpp) || $dpp == 0) {
+            $dpp = $base_subtotal;
         }
 
         // 1. Simpan Header ke tabel transactions
@@ -685,7 +726,7 @@ class TransactionController extends Controller {
             'ppnbm' => $ppnbm,
             'pajak_persen' => $payload['pajak_persen'] ?? 0,
             'pajak_nominal' => $payload['pajak_nominal'] ?? 0,
-            'idReferensi' => $payload['idReferensi'] ?? null,
+            'idReferensi' => !empty($payload['idReferensi']) ? $payload['idReferensi'] : null,
             'no_faktur' => $payload['no_faktur'] ?? null,
             'target_kode_barang' => $payload['target_kode_barang'] ?? null,
             'keterangan' => $payload['keterangan'] ?? null,
@@ -825,16 +866,19 @@ class TransactionController extends Controller {
                 }
             } 
             else if ($type === 'OUT') {
-                $stokTersedia = $itemMaster->stok - ($itemMaster->stok_booking ?? 0);
-                if (!$itemMaster || $stokTersedia < $realQty) {
-                    throw new \Exception("Stok tersedia tidak mencukupi untuk {$item['namaBarang']}. Sisa Tersedia: " . ($stokTersedia ?? 0));
-                }
-                
-                if ($status === 'scheduled' || $status === 'draft') {
-                    DB::table('items')->where('kodeBarang', $item['kodeBarang'])->increment('stok_booking', $realQty);
-                } else if ($status === 'completed') {
-                    DB::table('items')->where('kodeBarang', $item['kodeBarang'])->decrement('stok', $realQty, ['last_sold_at' => Carbon::now()]);
-                    $this->consumeFifoBatches($payload['idTransaksi'], $item['kodeBarang'], $realQty, $isScheduled);
+                $isJasa = strtolower(trim($itemMaster->tipeBarang ?? '')) === 'jasa';
+                if (!$isJasa) {
+                    $stokTersedia = $itemMaster->stok - ($itemMaster->stok_booking ?? 0);
+                    if (!$itemMaster || $stokTersedia < $realQty) {
+                        throw new \Exception("Stok tersedia tidak mencukupi untuk {$item['namaBarang']}. Sisa Tersedia: " . ($stokTersedia ?? 0));
+                    }
+                    
+                    if ($status === 'scheduled' || $status === 'draft') {
+                        DB::table('items')->where('kodeBarang', $item['kodeBarang'])->increment('stok_booking', $realQty);
+                    } else if ($status === 'completed') {
+                        DB::table('items')->where('kodeBarang', $item['kodeBarang'])->decrement('stok', $realQty, ['last_sold_at' => Carbon::now()]);
+                        $this->consumeFifoBatches($payload['idTransaksi'], $item['kodeBarang'], $realQty, $isScheduled);
+                    }
                 }
             }
             else if ($type === 'RET') {
@@ -1022,20 +1066,24 @@ class TransactionController extends Controller {
                 }
             } 
             else if ($type === 'OUT') {
-                if ($status === 'draft' || $status === 'scheduled') {
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
-                } else if ($status === 'completed') {
-                    $batchDetails = DB::table('transaction_batch_details')
-                        ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
-                        ->where('transaction_batch_details.idTransaksi', $idTransaksi)
-                        ->where('item_batches.kodeBarang', $detail->kodeBarang)
-                        ->select('transaction_batch_details.*')
-                        ->get();
-                        
-                    foreach($batchDetails as $bDetail) {
-                        DB::table('item_batches')->where('id_batch', $bDetail->id_batch)->increment('qty_sisa', $bDetail->qty_diambil);
+                $itemMaster = DB::table('items')->where('kodeBarang', $detail->kodeBarang)->first();
+                $isJasa = strtolower(trim($itemMaster->tipeBarang ?? '')) === 'jasa';
+                if (!$isJasa) {
+                    if ($status === 'draft' || $status === 'scheduled') {
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
+                    } else if ($status === 'completed') {
+                        $batchDetails = DB::table('transaction_batch_details')
+                            ->join('item_batches', 'transaction_batch_details.id_batch', '=', 'item_batches.id_batch')
+                            ->where('transaction_batch_details.idTransaksi', $idTransaksi)
+                            ->where('item_batches.kodeBarang', $detail->kodeBarang)
+                            ->select('transaction_batch_details.*')
+                            ->get();
+                            
+                        foreach($batchDetails as $bDetail) {
+                            DB::table('item_batches')->where('id_batch', $bDetail->id_batch)->increment('qty_sisa', $bDetail->qty_diambil);
+                        }
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
                     }
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
                 }
             }
             else if ($type === 'RET') {
@@ -1168,10 +1216,13 @@ class TransactionController extends Controller {
                     if (!$itemMaster) {
                         throw new \Exception("Item {$detail->namaBarang} tidak ditemukan.");
                     }
-                    // Booking dilepas, stok fisik dikurangi
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $realQty);
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $realQty, ['last_sold_at' => Carbon::now()]);
-                    $this->consumeFifoBatches($trx->idTransaksi, $detail->kodeBarang, $realQty, false);
+                    $isJasa = strtolower(trim($itemMaster->tipeBarang ?? '')) === 'jasa';
+                    if (!$isJasa) {
+                        // Booking dilepas, stok fisik dikurangi
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $realQty);
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $realQty, ['last_sold_at' => Carbon::now()]);
+                        $this->consumeFifoBatches($trx->idTransaksi, $detail->kodeBarang, $realQty, false);
+                    }
                 }
             }
 

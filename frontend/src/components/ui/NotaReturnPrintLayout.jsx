@@ -131,10 +131,12 @@ export default function NotaReturnPrintLayout({ data, onClose, currentUser, type
     const potonganHarga = Number(data.potongan_harga || 0);
     const uangMuka = Number(data.uang_muka || 0);
     const ppnbm = Number(data.ppnbm || 0);
-    const dpp = Number(data.dpp || (subtotal - potonganHarga - uangMuka));
+    const subtotalDasar = Math.max(0, subtotal - potonganHarga - uangMuka);
+    const fallbackDpp = isPembelian ? (subtotalDasar * 11 / 12) : subtotalDasar;
+    const dpp = data.dpp !== undefined && data.dpp !== null && Number(data.dpp) > 0 ? Number(data.dpp) : fallbackDpp;
     const pajakPersen = Number(data.pajak_persen || 0);
     const pajakNominal = Number(data.pajak_nominal || (dpp * pajakPersen / 100));
-    const grandTotal = Number(data.totalTransaksi) || (dpp + pajakNominal + ppnbm);
+    const grandTotal = Number(data.totalTransaksi) || (subtotalDasar + pajakNominal + ppnbm);
 
     // Signatures
     let sig1Label = 'Dikirim Oleh', sig1Name = isPembelian ? (data.namaSupplier || 'Supplier') : 'Admin Gudang';

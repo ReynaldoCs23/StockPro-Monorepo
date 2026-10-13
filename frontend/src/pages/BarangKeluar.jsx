@@ -129,7 +129,19 @@ export default function BarangKeluar() {
 
     const isMakloonOut = formData.tujuan === 'Kirim ke Vendor Makloon';
     const makloonVendors = suppliers.filter(s => s.tipe_partner === 'vendor' || s.idSupplier.startsWith('VEN'));
-    const produkJadiItems = items.filter(i => (i.tipeBarang || '').toLowerCase() === 'produk jadi');
+    const produkJadiItems = items.filter(i => ['produk jadi', 'barang jadi'].includes((i.tipeBarang || '').toLowerCase()));
+    // Filter barang yang boleh dipilih di transaksi keluar:
+    // - Penjualan ke Customer: Barang Jadi dan Jasa
+    // - Kirim ke Vendor Makloon: HANYA Bahan Baku
+    // - Non Produksi / Inventaris / Lainnya tidak ditampilkan
+    const availableItems = items.filter(i => {
+        const tipe = (i.tipeBarang || '').toLowerCase().trim();
+        if (isMakloonOut) {
+            return tipe === 'bahan baku' || tipe === 'kemasan';
+        } else {
+            return tipe === 'barang jadi' || tipe === 'produk jadi' || tipe === 'jasa';
+        }
+    });
 
     const openAddModal = () => {
         setEditId(null);
@@ -215,18 +227,33 @@ export default function BarangKeluar() {
         return row.satuan_transaksi === item.satuan_besar ? Number(row.jumlah) * Number(item.rasio_konversi || 1) : Number(row.jumlah);
     };
 
-    const handleDelete = async (id) => {
-        if (!confirm(`Hapus draft transaksi ${id}? Data akan dihapus permanen.`)) return;
+    const executeDelete = async (row) => {
+        const id = typeof row === 'string' ? row : row.idTransaksi;
+        const status = typeof row === 'string' ? 'draft' : (row.status || 'draft');
+        setIsProcessing(true);
         try {
             if (!isApiOffline) {
                 await apiCall(`/transaction/OUT/${id}`, 'DELETE', {
                     log_user: currentUser.namaLengkap,
-                    log_detail: `Membatalkan Barang Keluar: ${id}`
+                    log_detail: `Menghapus Transaksi Keluar (${status}): ${id}`
                 });
             }
-            setOutbound((Array.isArray(outbound) ? outbound : []).filter(t => t.idTransaksi !== id));
+            setOutbound(prev => (Array.isArray(prev) ? prev : []).filter(t => t.idTransaksi !== id));
             setToast({ message: "Transaksi berhasil dihapus!", type: "success" });
-        } catch (e) { setToast({ message: "Gagal menghapus: " + e.message, type: "error" }); }
+            setConfirmAction(null);
+            await fetchOutboundTransactions();
+        } catch (e) {
+            setToast({ message: "Gagal menghapus: " + e.message, type: "error" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleDelete = (idOrRow) => {
+        const row = (typeof idOrRow === 'object' && idOrRow !== null)
+            ? idOrRow
+            : ((Array.isArray(outbound) ? outbound : []).find(t => t.idTransaksi === idOrRow) || { idTransaksi: idOrRow, status: 'draft' });
+        setConfirmAction({ type: 'delete', row });
     };
 
     const handlePrintRow = (row) => {
@@ -238,9 +265,11 @@ export default function BarangKeluar() {
         const validItems = cartItems.filter(c => c.kodeBarang && c.jumlah > 0);
         if (validItems.length === 0) return setToast({ message: 'Minimal masukkan satu barang!', type: 'error' });
 
-        // Validasi Stok Multi-Item
+        // Validasi Stok Multi-Item (kecuali Jasa yang tidak memerlukan stok fisik)
         for (let it of validItems) {
             const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
+            const isJasa = (stockData?.tipeBarang || '').toLowerCase().trim() === 'jasa';
+            if (isJasa) continue;
             const baseQty = getActualBaseQty(it);
             if (Number(stockData?.stok || 0) < baseQty) {
                 setErrorMsg(`Stok tidak cukup untuk ${stockData?.nama || it.kodeBarang}! (Sisa: ${stockData?.stok || 0} ${stockData?.satuan_dasar || ''}, Dibutuhkan: ${baseQty})`);
@@ -250,6 +279,26 @@ export default function BarangKeluar() {
 
         setIsProcessing(true);
         const isMakloon = formData.tujuan === 'Kirim ke Vendor Makloon';
+
+        // Validasi Tipe Barang: Penjualan = Barang Jadi / Jasa, Makloon = Hanya Bahan Baku
+        for (let it of validItems) {
+            const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
+            const tipe = (stockData?.tipeBarang || '').toLowerCase().trim();
+            if (isMakloon) {
+                if (tipe !== 'bahan baku' && tipe !== 'kemasan') {
+                    setIsProcessing(false);
+                    setErrorMsg(`Untuk Makloon hanya boleh memilih Bahan Baku! (${stockData?.nama || it.kodeBarang} bertipe ${stockData?.tipeBarang || '-'})`);
+                    return;
+                }
+            } else {
+                if (tipe !== 'barang jadi' && tipe !== 'produk jadi' && tipe !== 'jasa') {
+                    setIsProcessing(false);
+                    setErrorMsg(`Untuk Penjualan hanya boleh memilih Barang Jadi atau Jasa! (${stockData?.nama || it.kodeBarang} bertipe ${stockData?.tipeBarang || '-'})`);
+                    return;
+                }
+            }
+        }
+
         const idPrefix = isMakloon ? 'MKL-OUT' : 'INV-OUT';
         const finalId = editId || generateId(idPrefix, outbound, 'idTransaksi');
 
@@ -260,10 +309,14 @@ export default function BarangKeluar() {
                 const stockData = items.find(i => i.kodeBarang === it.kodeBarang);
                 const isBesar = it.satuan_transaksi === stockData?.satuan_besar;
                 const rasio = Number(stockData?.rasio_konversi || 1);
-                const unitPrice = isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0);
+                const unitPrice = (it.harga_satuan !== '' && it.harga_satuan !== undefined)
+                    ? Number(it.harga_satuan)
+                    : (isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0));
                 totalTransaksiValue += (Number(it.jumlah) * unitPrice);
             });
         }
+        const subtotalDasar = Math.max(0, totalTransaksiValue - Number(potonganHarga || 0) - Number(uangMuka || 0));
+        const dppCalc = formData.tujuan === 'Penjualan ke Customer' ? Math.round(subtotalDasar * 11 / 12 * 100) / 100 : 0;
         const pajakNominal = totalTransaksiValue * (pajakPersen / 100);
         const grandTotal = totalTransaksiValue + pajakNominal;
 
@@ -277,15 +330,19 @@ export default function BarangKeluar() {
             potongan_harga: potonganHarga,
             uang_muka: uangMuka,
             ppnbm: ppnbm,
-            dpp: totalTransaksiValue,
+            dpp: dppCalc,
+            subtotal: totalTransaksiValue,
             items: validItems.map(item => {
                 const stockData = items.find(i => i.kodeBarang === item.kodeBarang);
                 const isBesar = item.satuan_transaksi === stockData?.satuan_besar;
                 const rasio = Number(stockData?.rasio_konversi || 1);
-                const unitPrice = isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0);
+                const unitPrice = (item.harga_satuan !== '' && item.harga_satuan !== undefined)
+                    ? Number(item.harga_satuan)
+                    : (isBesar ? (Number(stockData?.hargaJual_besar) || Number(stockData?.hargaJual || 0) * rasio) : Number(stockData?.hargaJual || 0));
                 return {
                     ...item,
                     namaBarang: stockData?.nama || '',
+                    harga_satuan: parseFloat(unitPrice.toFixed(2)),
                     harga_modal_satuan: parseFloat(unitPrice.toFixed(2)),
                     jumlah_transaksi: Number(item.jumlah),
                     satuan_transaksi: item.satuan_transaksi || stockData?.satuan_dasar || '',
@@ -321,11 +378,13 @@ export default function BarangKeluar() {
             }
             setItems(items.map(it => {
                 const usedItem = validItems.find(v => v.kodeBarang === it.kodeBarang);
-                if (usedItem) return { ...it, stok: Number(it.stok) - getActualBaseQty(usedItem) };
+                if (usedItem && (it.tipeBarang || '').toLowerCase().trim() !== 'jasa') {
+                    return { ...it, stok: Number(it.stok) - getActualBaseQty(usedItem) };
+                }
                 return it;
             }));
 
-            if (isApiOffline) addSimulatedLog('CREATE', 'Barang Keluar', `Menambah Transaksi Keluar: ${payload.idTransaksi}`);
+            if (isApiOffline) addSimulatedLog('CREATE', 'Transaksi Keluar', `Menambah Transaksi Keluar: ${payload.idTransaksi}`);
             setToast({ message: "Transaksi berhasil disimpan!", type: "success" });
             setModalOpen(false); setErrorMsg('');
         } catch (e) { setErrorMsg("Error Validation: " + e.message); }
@@ -441,16 +500,16 @@ export default function BarangKeluar() {
                 </div>
 
                 <DataTable
-                    title="Barang Keluar" filename="Barang_Keluar" data={filteredOutbound}
+                    title="Transaksi Keluar" filename="Transaksi_Keluar" data={filteredOutbound}
                     onExportCSV={fetchAllForExport}
                     exportColumns={exportColumnsCSV}
                     onPrintLaporan={handlePrintLaporan}
                     customFilter={
                         <div className="relative mr-2 w-full md:w-auto">
-                            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
-                                <option value="">Semua Transaksi</option>
-                                <option value="customer">Ke Customer</option>
-                                <option value="makloon">Ke Vendor Makloon</option>
+                            <select id="filter-jenis-transaksi-keluar" value={filterType} onChange={e => setFilterType(e.target.value)} className="appearance-none pl-3 pr-8 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 cursor-pointer w-full font-medium">
+                                <option value="">Semua Jenis Transaksi</option>
+                                <option value="customer">Penjualan</option>
+                                <option value="makloon">Pengiriman Bahan Baku</option>
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
                                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
@@ -466,21 +525,27 @@ export default function BarangKeluar() {
                     lastPage={lastPage}
                     onPageChange={setCurrentPage}
                     columns={reportColumns}
-                    extraActions={(row) => (
-                        <>
-                            {row.status === 'draft' && (
-                                <>
-                                    <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>
-                                    {can('delete_barang_keluar') && <button onClick={() => handleDelete(row.idTransaksi)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Draft"><Trash2 className="w-4 h-4" /></button>}
-                                </>
-                            )}
-                            {row.status === 'completed' && <button onClick={() => handleVoid(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Void Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>}
-                        </>
-                    )}
+                    extraActions={(row) => {
+                        const status = (row.status || '').toLowerCase();
+                        return (
+                            <>
+                                {status === 'draft' && (
+                                    <>
+                                        <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>
+                                        {can('delete_barang_keluar') && <button onClick={() => handleDelete(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Draft"><Trash2 className="w-4 h-4" /></button>}
+                                    </>
+                                )}
+                                {status === 'completed' && <button onClick={() => handleVoid(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Void Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>}
+                                {status === 'void' && can('delete_barang_keluar') && (
+                                    <button onClick={() => handleDelete(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Transaksi Void"><Trash2 className="w-4 h-4" /></button>
+                                )}
+                            </>
+                        );
+                    }}
                 />
             </div>
             
-            {!isPrintingRow && <ReportPrintTemplate title="Laporan Barang Keluar" type="transaction" data={fullPrintData || filteredOutbound} columns={reportColumns} />}
+            {!isPrintingRow && <ReportPrintTemplate title="Laporan Transaksi Keluar" type="transaction" data={fullPrintData || filteredOutbound} columns={reportColumns} />}
 
             <ConfirmModal
                 isOpen={!!confirmAction}
@@ -490,14 +555,30 @@ export default function BarangKeluar() {
                         executeApprove(confirmAction.row);
                     } else if (confirmAction?.type === 'void') {
                         executeVoid(confirmAction.row);
+                    } else if (confirmAction?.type === 'delete') {
+                        executeDelete(confirmAction.row);
                     }
                     setConfirmAction(null);
                 }}
-                title={confirmAction?.type === 'approve' ? "Approve Transaksi" : "Batalkan Transaksi (Void)"}
-                message={confirmAction?.type === 'approve' ? "Approve transaksi ini? Stok fisik akan terpotong secara FIFO." : "Batalkan (Void) transaksi ini? Alokasi FIFO akan dikembalikan."}
+                title={
+                    confirmAction?.type === 'approve' ? "Approve Transaksi" :
+                    confirmAction?.type === 'void' ? "Batalkan Transaksi (Void)" :
+                    "Hapus Transaksi"
+                }
+                message={
+                    confirmAction?.type === 'approve' ? "Approve transaksi ini? Stok fisik akan terpotong secara FIFO." :
+                    confirmAction?.type === 'void' ? "Batalkan (Void) transaksi ini? Alokasi FIFO akan dikembalikan." :
+                    `Yakin ingin menghapus permanen transaksi ${confirmAction?.row?.idTransaksi || ''} (${(confirmAction?.row?.status || '').toLowerCase() === 'void' ? 'Void' : 'Draft'})? Data tidak dapat dikembalikan.`
+                }
+                confirmText={
+                    confirmAction?.type === 'approve' ? "Ya, Approve" :
+                    confirmAction?.type === 'void' ? "Ya, Batalkan (Void)" :
+                    "Ya, Hapus Permanen"
+                }
+                variant={confirmAction?.type === 'approve' ? "info" : "danger"}
             />
 
-            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setErrorMsg(''); }} title="Input Barang Keluar" width="max-w-4xl">
+            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setErrorMsg(''); }} title="Input Transaksi Keluar" width="max-w-4xl">
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {errorMsg && (
                         <div className="bg-red-50 border-l-4 border-red-500 p-4 text-red-700 mb-4 font-semibold shadow-sm">
@@ -512,7 +593,11 @@ export default function BarangKeluar() {
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Tujuan / Kategori Keluar</label>
-                            <select className="w-full p-2.5 border border-slate-200 rounded-lg:border-blue-500:ring-blue-500" value={formData.tujuan} onChange={e => setFormData({ ...formData, tujuan: e.target.value, namaPembeli: '' })}>
+                            <select className="w-full p-2.5 border border-slate-200 rounded-lg:border-blue-500:ring-blue-500" value={formData.tujuan} onChange={e => {
+                                const newTujuan = e.target.value;
+                                setFormData({ ...formData, tujuan: newTujuan, namaPembeli: '' });
+                                setCartItems([{ kodeBarang: '', jumlah: '', lokasi_asal: '', lokasi_tujuan: '', satuan_transaksi: '', harga_satuan: '' }]);
+                            }}>
                                 <option value="Penjualan ke Customer">Penjualan ke Customer</option>
                                 <option value="Kirim ke Vendor Makloon">Kirim ke Vendor Makloon</option>
                             </select>
@@ -557,11 +642,22 @@ export default function BarangKeluar() {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
                                     const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
                                     const lineSubtotal = Number(item.jumlah) * Number(item.harga_satuan || 0);
+                                    const selectableItems = availableItems.some(i => i.kodeBarang === item.kodeBarang)
+                                        ? availableItems
+                                        : (item.kodeBarang && selectedItem ? [...availableItems, selectedItem] : availableItems);
+
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
                                         <select required className="flex-1 min-w-[180px] p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.kodeBarang} onChange={e => handleRowChange(idx, 'kodeBarang', e.target.value)}>
-                                            <option value="">Pilih Barang...</option>
-                                            {items.map(i => <option key={i.kodeBarang} value={i.kodeBarang}>[{i.satuan_dasar}] {i.nama} (Fisik: {i.stok} | Booking: {i.stok_booking || 0} | Tersedia: {i.stok_tersedia ?? i.stok})</option>)}
+                                            <option value="">{isMakloonOut ? 'Pilih Bahan Baku...' : 'Pilih Barang Jadi / Jasa...'}</option>
+                                            {selectableItems.map(i => {
+                                                const isJasa = (i.tipeBarang || '').toLowerCase().trim() === 'jasa';
+                                                return (
+                                                    <option key={i.kodeBarang} value={i.kodeBarang}>
+                                                        [{i.satuan_dasar}] {i.nama} {isJasa ? '(Jasa)' : `(Fisik: ${i.stok} | Booking: ${i.stok_booking || 0} | Tersedia: ${i.stok_tersedia ?? i.stok})`}
+                                                    </option>
+                                                );
+                                            })}
                                         </select>
                                         <input type="number" step="any" min="1" required placeholder="Qty" className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.jumlah} onChange={e => handleRowChange(idx, 'jumlah', e.target.value)} />
                                         <select className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.satuan_transaksi} onChange={e => handleRowChange(idx, 'satuan_transaksi', e.target.value)}>
@@ -588,7 +684,8 @@ export default function BarangKeluar() {
                             return sum + (Number(it.jumlah) * Number(it.harga_satuan || 0));
                         }, 0);
                         const taxNominal = subtotal * (pajakPersen / 100);
-                        const dppVisual = subtotal;
+                        const subtotalDasar = Math.max(0, subtotal - Number(potonganHarga || 0) - Number(uangMuka || 0));
+                        const dppVisual = Math.round(subtotalDasar * 11 / 12 * 100) / 100;
                         return (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">

@@ -205,7 +205,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Barang Masuk</p>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transaksi Masuk</p>
                         <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-800 leading-tight">{backendStats.barangMasuk?.value?.toLocaleString() || 0}</h3>
                         {renderTrendBadge(backendStats.barangMasuk?.percentage || 0, 'inbound')}
                     </div>
@@ -219,7 +219,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Barang Keluar</p>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transaksi Keluar</p>
                         <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-800 leading-tight">{backendStats.barangKeluar?.value?.toLocaleString() || 0}</h3>
                         {renderTrendBadge(backendStats.barangKeluar?.percentage || 0, 'outbound')}
                     </div>
@@ -428,23 +428,30 @@ export default function Dashboard() {
                     <h3 className="text-base font-extrabold text-slate-800">Barang Tidak Bergerak</h3>
                     <p className="text-[13px] text-slate-400 mb-4">Tidak ada transaksi keluar &gt; 30 hari</p>
                     <div className="flex-1 space-y-1">
-                        {backendStats.deadStock && backendStats.deadStock.length > 0 ? (
-                            backendStats.deadStock.map((item, idx) => (
-                                <div key={idx} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                                    <div>
-                                        <div className="text-[13px] font-bold text-slate-700">{item.namaBarang}</div>
-                                        <div className="text-[11px] text-slate-400">{item.kodeBarang}</div>
+                        {(() => {
+                            const filteredDeadStock = (backendStats.deadStock || []).filter(item => {
+                                const storeItem = items.find(i => i.kodeBarang === item.kodeBarang);
+                                const tipe = (storeItem?.tipeBarang || item.tipeBarang || '').toLowerCase();
+                                return !tipe.includes('inventaris') && !tipe.includes('non produksi') && !tipe.includes('jasa');
+                            });
+                            return filteredDeadStock.length > 0 ? (
+                                filteredDeadStock.map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 transition-colors">
+                                        <div>
+                                            <div className="text-[13px] font-bold text-slate-700">{item.namaBarang}</div>
+                                            <div className="text-[11px] text-slate-400">{item.kodeBarang}</div>
+                                        </div>
+                                        <div>
+                                            <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">
+                                                Sisa: {item.stok} Unit
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">
-                                            Sisa: {item.stok} Unit
-                                        </span>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="text-center text-slate-400 text-[13px] py-10 font-medium">Semua stok bergerak aktif</div>
-                        )}
+                                ))
+                            ) : (
+                                <div className="text-center text-slate-400 text-[13px] py-10 font-medium">Semua stok bergerak aktif</div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
