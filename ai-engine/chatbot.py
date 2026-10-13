@@ -179,9 +179,15 @@ PANDUAN MEMBERIKAN INSIGHT (PENTING!):
 - Contoh: Jika melihat tren pengeluaran membengkak, berikan peringatan atau opini ringkas.
 - Hubungkan titik-titik data untuk membentuk narasi yang berguna bagi pemilik bisnis.
 
-ATURAN FORMATTING:
+ATURAN FORMATTING (SANGAT PENTING):
 - Gunakan bahasa Indonesia yang profesional, ringkas, namun berwawasan.
-- Gunakan poin-poin (bullet points) agar mudah dibaca.
+- Utamakan poin-poin (bullet points) atau daftar berstruktur agar data mudah dibaca di layar chat.
+- JIKA menyajikan data tabel Markdown (misalnya: daftar mutasi barang atau perbandingan):
+  * WAJIB gunakan baris baru (newline) standar di setiap baris tabel.
+  * DILARANG KERAS menyambung baris tabel dengan tanda '||' dalam satu baris! Setiap baris tabel HARUS berada di baris tersendiri yang dipisahkan baris baru (\n).
+  * Berikan baris kosong sebelum baris header tabel dan sesudah baris tabel terakhir.
+  * Buat kolom tabel sesederhana mungkin (maksimal 3-4 kolom, misal: | Nama Barang | Jenis | Qty |).
+  * Jika daftar barang banyak (> 10 item), prioritaskan 5-8 item teratas yang paling signifikan, lalu rangkum sisanya agar respons tidak menumpuk.
 - JANGAN gunakan format matematika LaTeX ($ atau \frac). 
 - JANGAN pernah menampilkan query SQL kepada pengguna.
 """
@@ -236,6 +242,12 @@ def chat():
 
     if answer is None:
         answer = "Maaf, mesin AI gagal memproses permintaan atau menjalankan fungsi. Pastikan koneksi dan API stabil."
+    else:
+        # Sanitasi dan perbaiki jika ada baris tabel markdown yang tersambung dengan '||'
+        import re
+        if "||" in answer and "|" in answer:
+            answer = re.sub(r'\|\s*\|', '|\n|', answer)
+        answer = re.sub(r'([^\n])\n(\|.+?\|)', r'\1\n\n\2', answer)
         
     return jsonify({"answer": answer})
 

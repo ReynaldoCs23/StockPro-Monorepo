@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Send, Loader2, Sparkles, X, MessageSquare } from './icons/Icons';
 import useAppStore from '../store/useAppStore';
+import { formatAIMarkdown } from '../utils/helpers';
 
 const FloatingAIChat = () => {
     const { user } = useAppStore();
@@ -92,14 +94,29 @@ const FloatingAIChat = () => {
                                         : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none shadow-sm'
                                     }`}>
                                         <ReactMarkdown
+                                            remarkPlugins={[remarkGfm]}
                                             components={{
-                                                strong: ({node, ...props}) => <span className="font-bold" {...props} />,
-                                                p: ({node, ...props}) => <p className="mb-1 last:mb-0" {...props} />,
-                                                ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-1" {...props} />,
-                                                ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-1" {...props} />
+                                                strong: ({node, ...props}) => <span className="font-bold text-slate-800" {...props} />,
+                                                p: ({node, ...props}) => <p className="mb-1.5 last:mb-0" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-1.5 space-y-0.5" {...props} />,
+                                                ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-1.5 space-y-0.5" {...props} />,
+                                                li: ({node, ...props}) => <li className="leading-relaxed" {...props} />,
+                                                table: ({node, ...props}) => (
+                                                    <div className="overflow-x-auto my-2 border border-slate-200 rounded-lg shadow-xs">
+                                                        <table className="w-full text-left text-[11px] border-collapse" {...props} />
+                                                    </div>
+                                                ),
+                                                thead: ({node, ...props}) => <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200" {...props} />,
+                                                tbody: ({node, ...props}) => <tbody className="divide-y divide-slate-100 bg-white" {...props} />,
+                                                tr: ({node, ...props}) => <tr className="hover:bg-slate-50 transition-colors" {...props} />,
+                                                th: ({node, ...props}) => <th className="px-2.5 py-1.5 whitespace-nowrap font-bold text-slate-700" {...props} />,
+                                                td: ({node, ...props}) => <td className="px-2.5 py-1.5 whitespace-nowrap text-slate-600" {...props} />,
+                                                code: ({node, inline, ...props}) => inline 
+                                                    ? <code className="bg-slate-100 text-indigo-600 px-1 py-0.5 rounded text-[11px] font-mono font-semibold" {...props} />
+                                                    : <code className="block bg-slate-900 text-slate-100 p-2 rounded-lg text-[11px] font-mono overflow-x-auto my-1.5" {...props} />
                                             }}
                                         >
-                                            {msg.text}
+                                            {formatAIMarkdown(msg.text)}
                                         </ReactMarkdown>
                                     </div>
                                 </div>
