@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowDownToLine, Package, Calendar, Trash2 } from '../components/icons/Icons';
+import { ArrowDownToLine, Package, Calendar, Trash2, QrCode } from '../components/icons/Icons';
 import StatCardMini from '../components/ui/StatCardMini';
 import DataTable from '../components/ui/DataTable';
 import Modal from '../components/ui/Modal';
@@ -7,6 +7,7 @@ import Toast from '../components/ui/Toast';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import FakturPajak from '../components/ui/FakturPajak';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
+import EFakturScannerModal from '../components/ui/EFakturScannerModal';
 import { apiCall } from '../utils/api';
 import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate, formatAngkaExport, flattenTransactionsForExport } from '../utils/helpers';
 import useAppStore from '../store/useAppStore';
@@ -49,6 +50,8 @@ export default function BarangMasuk() {
     const [uangMuka, setUangMuka] = useState(0);
     const [ppnbm, setPpnbm] = useState(0);
     const [makloonRefs, setMakloonRefs] = useState([]);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [isScanning, setIsScanning] = useState(false);
 
     useEffect(() => {
         if (isMakloonIn) {
@@ -217,8 +220,22 @@ export default function BarangMasuk() {
         
         if (field === 'kodeBarang') {
             if (item) {
-                newCart[index].harga_modal_satuan = item.hargaBeli;
+                const hargaBeli = Number(item.hargaBeli || 0);
                 newCart[index].satuan_transaksi = item.satuan_dasar || '';
+                
+                // Jika baris ini memiliki target_total dari e-Faktur (atau total baris sebelumnya)
+                const targetTotal = Number(newCart[index].target_total || 0) || (Number(newCart[index].jumlah || 0) * Number(newCart[index].harga_modal_satuan || 0));
+                
+                if (hargaBeli > 0) {
+                    newCart[index].harga_modal_satuan = hargaBeli;
+                    if (targetTotal > 0) {
+                        const rawQty = targetTotal / hargaBeli;
+                        const roundedQty = Math.abs(rawQty - Math.round(rawQty)) < 0.01 ? Math.round(rawQty) : Math.round(rawQty * 100) / 100;
+                        newCart[index].jumlah = roundedQty > 0 ? roundedQty : 1;
+                    }
+                } else {
+                    newCart[index].harga_modal_satuan = item.hargaBeli || '';
+                }
             }
         } else if (field === 'satuan_transaksi' && item) {
             const isNowBesar = value === item.satuan_besar;
@@ -234,6 +251,13 @@ export default function BarangMasuk() {
                 // Switch back to base unit price
                 newCart[index].harga_modal_satuan = item.hargaBeli;
             }
+
+            const targetTotal = Number(newCart[index].target_total || 0);
+            if (targetTotal > 0 && Number(newCart[index].harga_modal_satuan) > 0) {
+                const rawQty = targetTotal / Number(newCart[index].harga_modal_satuan);
+                const roundedQty = Math.abs(rawQty - Math.round(rawQty)) < 0.01 ? Math.round(rawQty) : Math.round(rawQty * 100) / 100;
+                newCart[index].jumlah = roundedQty > 0 ? roundedQty : 1;
+            }
         }
         setCartItems(newCart);
     };
@@ -242,6 +266,140 @@ export default function BarangMasuk() {
         const item = items.find(i => i.kodeBarang === row.kodeBarang);
         if (!item || !row.jumlah) return 0;
         return row.satuan_transaksi === item.satuan_besar ? Number(row.jumlah) * Number(item.rasio_konversi || 1) : Number(row.jumlah);
+    };
+
+    // Auto-Fill Form dari Hasil Scan e-Faktur (DJP QR Code)
+    // PERINGATAN: Fungsi ini HANYA mengisi state form di layar dan TIDAK menyimpan ke database
+    const handleScanSuccess = async (qrUrl) => {
+        setIsScanning(true);
+        try {
+            const res = await apiCall('/efaktur/extract', 'POST', { qrUrl });
+            const data = res?.data || res;
+
+            if (!data) {
+                throw new Error('Data e-Faktur tidak ditemukan atau format tidak sesuai.');
+            }
+
+            // 1. Ekstrak data faktur
+            const nomorFaktur = data.no_faktur || data.nomor_faktur || '';
+            const rawSupplierName = data.nama || data.supplier_name || '';
+            const tanggalFaktur = data.tanggal ? getLocalYYYYMMDD(data.tanggal) : formData.tanggal;
+            const dppVal = Number(data.dpp || 0);
+            const ppnbmVal = Number(data.ppnbm || 0);
+
+            // 2. Hubungan Finansial:
+            // Rumus DJP: DPP = Harga Jual * 11/12
+            // Maka: Harga Jual (Subtotal) = DPP * 12/11
+            const hargaJualTotal = dppVal > 0 ? Math.round(dppVal * 12 / 11) : (Number(data.total || 0) || 0);
+
+            // 3. Cocokkan Supplier dengan Master Supplier
+            let matchedSupplier = rawSupplierName;
+            if (suppliers && suppliers.length > 0 && rawSupplierName) {
+                const cleanRaw = rawSupplierName.toLowerCase().replace(/^(pt\.?|cv\.?|ud\.?)\s+/i, '').trim();
+                const found = suppliers.find(s => {
+                    const cleanS = (s.nama || '').toLowerCase().replace(/^(pt\.?|cv\.?|ud\.?)\s+/i, '').trim();
+                    const npwpMatch = data.npwp && s.npwp && s.npwp.replace(/\D/g, '') === data.npwp.replace(/\D/g, '');
+                    return npwpMatch || cleanS.includes(cleanRaw) || cleanRaw.includes(cleanS);
+                });
+                if (found) {
+                    matchedSupplier = found.nama;
+                }
+            }
+
+            // 4. Update State Form (Auto-Fill SAJA - TIDAK memanggil handleSubmit)
+            setFormData(prev => ({
+                ...prev,
+                no_faktur: nomorFaktur || prev.no_faktur,
+                tanggal: tanggalFaktur,
+                namaSupplier: matchedSupplier || prev.namaSupplier,
+                keterangan: prev.keterangan || (data.npwp ? `e-Faktur NPWP: ${data.npwp}` : 'Scan e-Faktur DJP')
+            }));
+
+            // PPN diatur ke 11% dari Harga Jual (sesuai ketentuan terkini)
+            setPajakPersen(11);
+            if (ppnbmVal > 0) {
+                setPpnbm(ppnbmVal);
+            }
+
+            // 5. Update Cart Items (Qty dihitung dari: Harga Jual / Harga Satuan Master Barang)
+            const defaultLocation = locations?.[0]?.idLokasi || '';
+            let mappedCart = [];
+
+            if (Array.isArray(data.items) && data.items.length > 0) {
+                mappedCart = data.items.map(it => {
+                    const matchedItem = items.find(i => 
+                        (i.nama && it.nama && i.nama.toLowerCase().includes(it.nama.toLowerCase())) ||
+                        (i.nama && it.nama && it.nama.toLowerCase().includes(i.nama.toLowerCase()))
+                    );
+
+                    // PENTING: Jangan fallback ke items[0] jika tidak ada kecocokan nama di master barang,
+                    // agar tidak salah memilih barang lain (misal galon padahal kemasan gelas).
+                    const chosenItem = matchedItem || null;
+
+                    // Hitung harga jual per baris dari DPP item
+                    const itemDpp = Number(it.dpp || it.total || it.harga_satuan || 0) || dppVal;
+                    const itemHargaJual = itemDpp > 0 ? Math.round(itemDpp * 12 / 11) : hargaJualTotal;
+
+                    let finalQty = Number(it.jumlah) || 1;
+                    let finalUnitPrice = chosenItem ? itemHargaJual : '';
+
+                    if (chosenItem && Number(chosenItem.hargaBeli) > 0) {
+                        finalUnitPrice = Number(chosenItem.hargaBeli);
+                        const rawQty = itemHargaJual / finalUnitPrice;
+                        finalQty = Math.abs(rawQty - Math.round(rawQty)) < 0.01 ? Math.round(rawQty) : Math.round(rawQty * 100) / 100;
+                        if (finalQty <= 0) finalQty = 1;
+                    }
+
+                    return {
+                        kodeBarang: chosenItem ? chosenItem.kodeBarang : '',
+                        jumlah: chosenItem ? finalQty : 1,
+                        harga_modal_satuan: chosenItem ? finalUnitPrice : '',
+                        lokasi_asal: matchedSupplier || '',
+                        lokasi_tujuan: defaultLocation,
+                        satuan_transaksi: chosenItem ? chosenItem.satuan_dasar : '',
+                        target_total: itemHargaJual
+                    };
+                });
+            }
+
+            // Jika mappedCart masih kosong tapi ada DPP faktur: buat 1 baris otomatis
+            if (mappedCart.length === 0 && dppVal > 0) {
+                mappedCart = [{
+                    kodeBarang: '',
+                    jumlah: 1,
+                    harga_modal_satuan: '',
+                    lokasi_asal: matchedSupplier || '',
+                    lokasi_tujuan: defaultLocation,
+                    satuan_transaksi: '',
+                    target_total: hargaJualTotal
+                }];
+            }
+
+            if (mappedCart.length > 0) {
+                setCartItems(mappedCart);
+            } else {
+                setCartItems(prev => prev.map(item => ({
+                    ...item,
+                    lokasi_asal: matchedSupplier || item.lokasi_asal
+                })));
+            }
+
+            const hasUnselectedItem = mappedCart.some(c => !c.kodeBarang);
+            setToast({
+                message: hasUnselectedItem
+                    ? `e-Faktur (${nomorFaktur || rawSupplierName}) berhasil dibaca. Barcode tidak memuat rincian nama barang, silakan pilih nama barang pada dropdown.`
+                    : `e-Faktur (${nomorFaktur || rawSupplierName}) berhasil diisi ke form! Silakan periksa & sesuaikan sebelum menyimpan.`,
+                type: 'success'
+            });
+            setIsScannerOpen(false);
+        } catch (error) {
+            setToast({
+                message: 'Gagal mengekstrak e-Faktur: ' + (error.message || 'Format tidak valid'),
+                type: 'error'
+            });
+        } finally {
+            setIsScanning(false);
+        }
     };
 
     const handleDelete = async (id) => {
@@ -503,8 +661,19 @@ export default function BarangMasuk() {
                             </select>
                         </div>
                         <div className="col-span-2">
-                            <label className="block text-sm font-medium mb-1">No. Faktur (Opsional)</label>
-                            <input type="text" placeholder="Masukkan Nomor Faktur Manual" className="w-full p-2.5 border rounded-xl:border-blue-500:ring-blue-500" value={formData.no_faktur} onChange={e => setFormData({ ...formData, no_faktur: e.target.value })} />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-sm font-medium text-slate-700">No. Faktur (Opsional)</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsScannerOpen(true)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
+                                    title="Scan QR e-Faktur DJP untuk auto-fill form"
+                                >
+                                    <QrCode className="w-3.5 h-3.5" />
+                                    <span>Scan QR e-Faktur</span>
+                                </button>
+                            </div>
+                            <input type="text" placeholder="Masukkan Nomor Faktur Manual / Hasil Scan" className="w-full p-2.5 border rounded-xl:border-blue-500:ring-blue-500" value={formData.no_faktur} onChange={e => setFormData({ ...formData, no_faktur: e.target.value })} />
                         </div>
                         <div className="col-span-2">
                             <label className="block text-sm font-medium mb-1">{isMakloonIn ? 'Nama Vendor Makloon' : 'Supplier'}</label>
@@ -514,6 +683,9 @@ export default function BarangMasuk() {
                                 setCartItems(prev => prev.map(item => ({ ...item, lokasi_asal: name })));
                             }}>
                                 <option value="">{isMakloonIn ? 'Pilih Vendor Makloon...' : 'Pilih Supplier...'}</option>
+                                {formData.namaSupplier && !standardSuppliers.some(s => s.nama === formData.namaSupplier) && !makloonVendors.some(s => s.nama === formData.namaSupplier) && (
+                                    <option value={formData.namaSupplier}>{formData.namaSupplier} (e-Faktur)</option>
+                                )}
                                 {isMakloonIn
                                     ? makloonVendors.map(s => <option key={s.idSupplier} value={s.nama}>{s.nama}</option>)
                                     : standardSuppliers.map(s => <option key={s.idSupplier} value={s.nama}>{s.nama}</option>)
@@ -544,7 +716,7 @@ export default function BarangMasuk() {
                             <div className="min-w-[750px] space-y-3">
                                 {cartItems.map((item, idx) => {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
-                                    const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
+                                    const satuanOptions = selectedItem ? [...new Set([selectedItem.satuan_dasar, selectedItem.satuan_besar].filter(Boolean))] : [];
                                     const lineSubtotal = Number(item.jumlah) * Number(item.harga_modal_satuan || 0);
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
@@ -647,6 +819,14 @@ export default function BarangMasuk() {
                     <button onClick={() => setIsDetailModalOpen(false)} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300">Tutup</button>
                 </div>
             </Modal>
+
+            {/* Modal Scanner QR e-Faktur DJP */}
+            <EFakturScannerModal
+                isOpen={isScannerOpen}
+                onClose={() => setIsScannerOpen(false)}
+                onScan={handleScanSuccess}
+                isProcessing={isScanning}
+            />
         </div>
     );
 }

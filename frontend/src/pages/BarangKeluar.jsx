@@ -1,7 +1,7 @@
 import useAppStore from '../store/useAppStore';
 import React, { useState, useEffect } from 'react';
 import FakturPajak from '../components/ui/FakturPajak';
-import { ArrowUpFromLine, Package, Calendar, Trash2 } from '../components/icons/Icons';
+import { ArrowUpFromLine, Package, Calendar, Trash2, QrCode } from '../components/icons/Icons';
 import StatCardMini from '../components/ui/StatCardMini';
 import DataTable from '../components/ui/DataTable';
 import Modal from '../components/ui/Modal';
@@ -9,6 +9,7 @@ import Toast from '../components/ui/Toast';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import SuratJalanMakloon from '../components/ui/SuratJalanMakloon';
+import EFakturScannerModal from '../components/ui/EFakturScannerModal';
 import { apiCall } from '../utils/api';
 import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate, formatAngkaExport, flattenTransactionsForExport } from '../utils/helpers';
 
@@ -50,6 +51,8 @@ export default function BarangKeluar() {
     const [uangMuka, setUangMuka] = useState(0);
     const [ppnbm, setPpnbm] = useState(0);
     const [targetKodeBarang, setTargetKodeBarang] = useState('');
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [isScanning, setIsScanning] = useState(false);
 
     const filteredOutbound = (() => {
         return (Array.isArray(outbound) ? outbound : []).filter(t => {
@@ -206,8 +209,21 @@ export default function BarangKeluar() {
         if (field === 'kodeBarang') {
             const item = items.find(i => i.kodeBarang === value);
             if (item) {
+                const hargaJual = Number(item.hargaJual || 0);
                 newCart[index].satuan_transaksi = item.satuan_dasar || '';
-                newCart[index].harga_satuan = item.hargaJual || 0;
+                
+                const targetTotal = Number(newCart[index].target_total || 0) || (Number(newCart[index].jumlah || 0) * Number(newCart[index].harga_satuan || 0));
+                
+                if (hargaJual > 0) {
+                    newCart[index].harga_satuan = hargaJual;
+                    if (targetTotal > 0) {
+                        const rawQty = targetTotal / hargaJual;
+                        const roundedQty = Math.abs(rawQty - Math.round(rawQty)) < 0.01 ? Math.round(rawQty) : Math.round(rawQty * 100) / 100;
+                        newCart[index].jumlah = roundedQty > 0 ? roundedQty : 1;
+                    }
+                } else {
+                    newCart[index].harga_satuan = item.hargaJual || 0;
+                }
             }
         }
         if (field === 'satuan_transaksi') {
@@ -216,6 +232,13 @@ export default function BarangKeluar() {
                 const isBesar = value === item.satuan_besar;
                 const rasio = Number(item.rasio_konversi || 1);
                 newCart[index].harga_satuan = isBesar ? (Number(item.hargaJual_besar) || Number(item.hargaJual || 0) * rasio) : Number(item.hargaJual || 0);
+
+                const targetTotal = Number(newCart[index].target_total || 0);
+                if (targetTotal > 0 && Number(newCart[index].harga_satuan) > 0) {
+                    const rawQty = targetTotal / Number(newCart[index].harga_satuan);
+                    const roundedQty = Math.abs(rawQty - Math.round(rawQty)) < 0.01 ? Math.round(rawQty) : Math.round(rawQty * 100) / 100;
+                    newCart[index].jumlah = roundedQty > 0 ? roundedQty : 1;
+                }
             }
         }
         setCartItems(newCart);
@@ -258,6 +281,139 @@ export default function BarangKeluar() {
 
     const handlePrintRow = (row) => {
         setPrintData(row);
+    };
+
+    // Auto-Fill Form dari Hasil Scan e-Faktur (DJP QR Code)
+    // PERINGATAN: Fungsi ini HANYA mengisi state form di layar dan TIDAK menyimpan ke database
+    const handleScanSuccess = async (qrUrl) => {
+        setIsScanning(true);
+        try {
+            const res = await apiCall('/efaktur/extract', 'POST', { qrUrl });
+            const data = res?.data || res;
+
+            if (!data) {
+                throw new Error('Data e-Faktur tidak ditemukan atau format tidak sesuai.');
+            }
+
+            // 1. Ekstrak data faktur
+            const nomorFaktur = data.no_faktur || data.nomor_faktur || '';
+            const rawCustomerName = data.nama_pembeli || data.nama || '';
+            const tanggalFaktur = data.tanggal ? getLocalYYYYMMDD(data.tanggal) : formData.tanggal;
+            const dppVal = Number(data.dpp || 0);
+            const ppnbmVal = Number(data.ppnbm || 0);
+
+            // 2. Hubungan Finansial:
+            // Rumus DJP: DPP = Harga Jual * 11/12
+            // Maka: Harga Jual (Subtotal) = DPP * 12/11
+            const hargaJualTotal = dppVal > 0 ? Math.round(dppVal * 12 / 11) : (Number(data.total || 0) || 0);
+
+            // 3. Cocokkan Pelanggan dengan Master Customer
+            let matchedCustomer = rawCustomerName;
+            if (customers && customers.length > 0 && rawCustomerName) {
+                const cleanRaw = rawCustomerName.toLowerCase().replace(/^(pt\.?|cv\.?|ud\.?)\s+/i, '').trim();
+                const found = customers.find(c => {
+                    const cleanC = (c.nama || '').toLowerCase().replace(/^(pt\.?|cv\.?|ud\.?)\s+/i, '').trim();
+                    const npwpMatch = (data.npwp_pembeli || data.npwp) && c.npwp && c.npwp.replace(/\D/g, '') === (data.npwp_pembeli || data.npwp).replace(/\D/g, '');
+                    return npwpMatch || cleanC.includes(cleanRaw) || cleanRaw.includes(cleanC);
+                });
+                if (found) {
+                    matchedCustomer = found.nama;
+                }
+            }
+
+            // 4. Update State Form (Auto-Fill SAJA - TIDAK memanggil handleSubmit)
+            setFormData(prev => ({
+                ...prev,
+                no_faktur: nomorFaktur || prev.no_faktur,
+                tanggal: tanggalFaktur,
+                namaPembeli: matchedCustomer || prev.namaPembeli,
+                keterangan: prev.keterangan || (data.npwp_pembeli || data.npwp ? `e-Faktur NPWP: ${data.npwp_pembeli || data.npwp}` : 'Scan e-Faktur DJP')
+            }));
+
+            // PPN diatur ke 11% dari Harga Jual (sesuai ketentuan terkini)
+            setPajakPersen(11);
+            if (ppnbmVal > 0) {
+                setPpnbm(ppnbmVal);
+            }
+
+            // 5. Update Cart Items (Qty dihitung dari: Harga Jual / Harga Satuan Master Barang)
+            const defaultLocation = locations?.[0]?.idLokasi || '';
+            let mappedCart = [];
+
+            if (Array.isArray(data.items) && data.items.length > 0) {
+                mappedCart = data.items.map(it => {
+                    const matchedItem = items.find(i => 
+                        (i.nama && it.nama && i.nama.toLowerCase().includes(it.nama.toLowerCase())) ||
+                        (i.nama && it.nama && it.nama.toLowerCase().includes(i.nama.toLowerCase()))
+                    );
+
+                    // PENTING: Jangan fallback ke items[0] jika tidak ada kecocokan nama di master barang,
+                    // agar tidak salah memilih barang lain.
+                    const chosenItem = matchedItem || null;
+
+                    const itemDpp = Number(it.dpp || it.total || it.harga_satuan || 0) || dppVal;
+                    const itemHargaJual = itemDpp > 0 ? Math.round(itemDpp * 12 / 11) : hargaJualTotal;
+
+                    let finalQty = Number(it.jumlah) || 1;
+                    let finalUnitPrice = chosenItem ? itemHargaJual : '';
+
+                    if (chosenItem && Number(chosenItem.hargaJual) > 0) {
+                        finalUnitPrice = Number(chosenItem.hargaJual);
+                        const rawQty = itemHargaJual / finalUnitPrice;
+                        finalQty = Math.abs(rawQty - Math.round(rawQty)) < 0.01 ? Math.round(rawQty) : Math.round(rawQty * 100) / 100;
+                        if (finalQty <= 0) finalQty = 1;
+                    }
+
+                    return {
+                        kodeBarang: chosenItem ? chosenItem.kodeBarang : '',
+                        jumlah: chosenItem ? finalQty : 1,
+                        harga_satuan: chosenItem ? finalUnitPrice : '',
+                        lokasi_asal: defaultLocation,
+                        lokasi_tujuan: matchedCustomer || '',
+                        satuan_transaksi: chosenItem ? chosenItem.satuan_dasar : '',
+                        target_total: itemHargaJual
+                    };
+                });
+            }
+
+            // Jika mappedCart masih kosong tapi ada DPP faktur: buat 1 baris
+            if (mappedCart.length === 0 && dppVal > 0) {
+                mappedCart = [{
+                    kodeBarang: '',
+                    jumlah: 1,
+                    harga_satuan: '',
+                    lokasi_asal: defaultLocation,
+                    lokasi_tujuan: matchedCustomer || '',
+                    satuan_transaksi: '',
+                    target_total: hargaJualTotal
+                }];
+            }
+
+            if (mappedCart.length > 0) {
+                setCartItems(mappedCart);
+            } else {
+                setCartItems(prev => prev.map(item => ({
+                    ...item,
+                    lokasi_tujuan: matchedCustomer || item.lokasi_tujuan
+                })));
+            }
+
+            const hasUnselectedItem = mappedCart.some(c => !c.kodeBarang);
+            setToast({
+                message: hasUnselectedItem
+                    ? `e-Faktur (${nomorFaktur || rawCustomerName}) berhasil dibaca. Barcode tidak memuat rincian nama barang, silakan pilih nama barang pada dropdown.`
+                    : `e-Faktur (${nomorFaktur || rawCustomerName}) berhasil diisi ke form! Silakan periksa & sesuaikan sebelum menyimpan.`,
+                type: 'success'
+            });
+            setIsScannerOpen(false);
+        } catch (error) {
+            setToast({
+                message: 'Gagal mengekstrak e-Faktur: ' + (error.message || 'Format tidak valid'),
+                type: 'error'
+            });
+        } finally {
+            setIsScanning(false);
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -603,8 +759,19 @@ export default function BarangKeluar() {
                             </select>
                         </div>
                         <div className="col-span-2">
-                            <label className="block text-sm font-medium mb-1">No. Faktur (Opsional)</label>
-                            <input type="text" placeholder="Masukkan Nomor Faktur Manual" className="w-full p-2.5 border rounded-xl:border-blue-500:ring-blue-500" value={formData.no_faktur} onChange={e => setFormData({ ...formData, no_faktur: e.target.value })} />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-sm font-medium text-slate-700">No. Faktur (Opsional)</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsScannerOpen(true)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
+                                    title="Scan QR e-Faktur DJP untuk auto-fill form"
+                                >
+                                    <QrCode className="w-3.5 h-3.5" />
+                                    <span>Scan QR e-Faktur</span>
+                                </button>
+                            </div>
+                            <input type="text" placeholder="Masukkan Nomor Faktur Manual / Hasil Scan" className="w-full p-2.5 border rounded-xl:border-blue-500:ring-blue-500" value={formData.no_faktur} onChange={e => setFormData({ ...formData, no_faktur: e.target.value })} />
                         </div>
                         <div className="col-span-2">
                             <label className="block text-sm font-medium mb-1">{isMakloonOut ? 'Nama Vendor Makloon' : 'Nama Pelanggan / Distributor'}</label>
@@ -614,6 +781,9 @@ export default function BarangKeluar() {
                                 setCartItems(prev => prev.map(item => ({ ...item, lokasi_tujuan: name })));
                             }}>
                                 <option value="">{isMakloonOut ? 'Pilih Vendor Makloon...' : 'Pilih Pelanggan...'}</option>
+                                {formData.namaPembeli && !customers.some(c => c.nama === formData.namaPembeli) && !makloonVendors.some(s => s.nama === formData.namaPembeli) && (
+                                    <option value={formData.namaPembeli}>{formData.namaPembeli} (e-Faktur)</option>
+                                )}
                                 {isMakloonOut
                                     ? makloonVendors.map(s => <option key={s.idSupplier} value={s.nama}>{s.nama}</option>)
                                     : customers.map(c => <option key={c.idPelanggan} value={c.nama}>{c.nama}</option>)
@@ -640,7 +810,7 @@ export default function BarangKeluar() {
                             <div className="min-w-[750px] space-y-3">
                                 {cartItems.map((item, idx) => {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
-                                    const satuanOptions = selectedItem ? [selectedItem.satuan_dasar, ...(selectedItem.satuan_besar ? [selectedItem.satuan_besar] : [])] : [];
+                                    const satuanOptions = selectedItem ? [...new Set([selectedItem.satuan_dasar, selectedItem.satuan_besar].filter(Boolean))] : [];
                                     const lineSubtotal = Number(item.jumlah) * Number(item.harga_satuan || 0);
                                     const selectableItems = availableItems.some(i => i.kodeBarang === item.kodeBarang)
                                         ? availableItems
@@ -814,6 +984,14 @@ export default function BarangKeluar() {
                     <div className="text-center py-12 text-slate-400">Tidak ada data FIFO trace untuk transaksi ini.</div>
                 )}
             </Modal>
+
+            {/* Modal Scanner QR e-Faktur DJP */}
+            <EFakturScannerModal
+                isOpen={isScannerOpen}
+                onClose={() => setIsScannerOpen(false)}
+                onScan={handleScanSuccess}
+                isProcessing={isScanning}
+            />
         </div>
     );
 }

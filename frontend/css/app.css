@@ -250,3 +250,14 @@
         print-color-adjust: exact !important;
     }
 }
+
+/* Styling QR Camera Viewport */
+#efaktur-qr-camera-viewport video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    border-radius: 1rem !important;
+}
+#efaktur-qr-camera-viewport {
+    border: none !important;
+}

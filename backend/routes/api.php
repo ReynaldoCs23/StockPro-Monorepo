@@ -54,6 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/company-profile', [\App\Http\Controllers\CompanyProfileController::class, 'show']);
     Route::post('/company-profile', [\App\Http\Controllers\CompanyProfileController::class, 'update']);
     Route::get('/transactions', [TransactionController::class, 'index']);
+    Route::post('/efaktur/extract', [\App\Http\Controllers\EFakturController::class, 'extract']);
     
     // ==========================================
     // 1.6 STOCK ADJUSTMENTS
