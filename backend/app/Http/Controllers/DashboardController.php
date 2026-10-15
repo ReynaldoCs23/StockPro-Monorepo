@@ -48,6 +48,7 @@ class DashboardController extends Controller {
                 $financeRow = DB::table('transactions')
                     ->whereBetween('tanggal', [$start, $end])
                     ->where('status', 'completed')
+                    ->whereNull('deleted_at')
                     ->select(DB::raw("
                         COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%' OR idTransaksi LIKE 'MKL-IN%' THEN totalTransaksi ELSE 0 END), 0)
                         - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%' THEN totalTransaksi ELSE 0 END), 0)
@@ -109,6 +110,7 @@ class DashboardController extends Controller {
                     DB::raw("COALESCE(SUM(CASE WHEN idTransaksi LIKE 'INV-IN%' THEN totalTransaksi ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN idTransaksi LIKE 'MKL-IN%' THEN totalTransaksi ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN idTransaksi LIKE 'RET-OUT%' THEN totalTransaksi ELSE 0 END), 0) as pengeluaran_vendor")
                 )
                 ->where('status', 'completed')
+                ->whereNull('deleted_at')
                 ->whereBetween('tanggal', [$cleanStart, $cleanEnd])
                 ->groupBy('date')
                 ->get()
@@ -219,6 +221,7 @@ class DashboardController extends Controller {
                 })
                 ->where('transactions.sumber_tujuan', 'NOT LIKE', '%Makloon%')
                 ->where('transactions.status', 'completed')
+                ->whereNull('transactions.deleted_at')
                 ->whereBetween('transactions.tanggal', [$cleanStart, $cleanEnd])
                 ->whereNotNull('transactions.entitas')
                 ->groupBy('transactions.entitas', 'customers.penanggung_jawab')

@@ -447,13 +447,11 @@ class TransactionTest extends TestCase
         ]);
         $delResponse->assertStatus(200);
 
-        // Assert transaction and details are deleted permanently
-        $this->assertDatabaseMissing('transactions', [
+        // Assert transaction is soft deleted (not hard deleted, audit safe)
+        $this->assertSoftDeleted('transactions', [
             'idTransaksi' => $trxId
         ]);
-        $this->assertDatabaseMissing('transaction_details', [
-            'idTransaksi' => $trxId
-        ]);
+        $this->assertNull(\App\Models\Transaction::find($trxId));
 
         // Assert stock remains untouched at 10
         $item->refresh();

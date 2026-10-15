@@ -19,7 +19,7 @@ class TransactionController extends Controller {
         $startDate = $request->get('start_date', Carbon::today('Asia/Makassar')->subMonth()->format('Y-m-d'));
         $endDate = $request->get('end_date', Carbon::today('Asia/Makassar')->format('Y-m-d'));
 
-        $query = DB::table('transactions');
+        $query = DB::table('transactions')->whereNull('transactions.deleted_at');
         
         if ($request->query('recent_only') !== 'true') {
             if (!empty($startDate)) {
@@ -548,26 +548,56 @@ class TransactionController extends Controller {
     }
 
     public function destroy(Request $request, $type, $id) {
-        $trx = DB::table('transactions')->where('idTransaksi', $id)->first();
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user) {
+            $role = strtolower($user->role ?? '');
+            $hasRolePermission = method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['admin', 'Admin', 'superadmin', 'Superadmin']);
+            if (!in_array($role, ['admin', 'superadmin']) && !$hasRolePermission) {
+                abort(403, 'Akses ditolak: Hanya Admin atau Superadmin yang diizinkan menghapus transaksi.');
+            }
+        }
+
+        $trx = \App\Models\Transaction::where('idTransaksi', $id)->first();
         if (!$trx) {
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
-        if (!in_array(strtolower($trx->status), ['draft', 'scheduled', 'void'])) {
+
+        $allowedStatuses = ['draft', 'scheduled', 'void', 'canceled', 'cancelled'];
+        if (!in_array(strtolower($trx->status), $allowedStatuses)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal: Hanya transaksi berstatus Draft, Scheduled, atau Void yang dapat dihapus permanen.'
+                'message' => 'Gagal: Hanya transaksi berstatus Draft atau Canceled/Void yang dapat dihapus.'
             ], 403);
         }
 
         DB::beginTransaction();
         try {
-            $this->revertTransaction($id);
+            // Jika transaksi draft/scheduled outbound yang pernah membukukan stok, lepaskan stok_booking
+            if (in_array(strtolower($trx->status), ['draft', 'scheduled'])) {
+                $details = DB::table('transaction_details')->where('idTransaksi', $id)->get();
+                foreach ($details as $detail) {
+                    if ($trx->type === 'OUT') {
+                        $itemMaster = DB::table('items')->where('kodeBarang', $detail->kodeBarang)->first();
+                        $isJasa = strtolower(trim($itemMaster->tipeBarang ?? '')) === 'jasa';
+                        if (!$isJasa) {
+                            DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok_booking', $detail->jumlah);
+                        }
+                    }
+                }
+            }
+
+            // Eksekusi Soft Delete via Model Eloquent
+            $trx->delete();
+
             $statusLabel = ucfirst($trx->status);
-            $this->writeLog($request->log_user, 'DELETE', 'transactions', $request->log_detail ?? "Hapus Transaksi {$statusLabel} $id");
+            $userLabel = $request->log_user ?? ($user->namaLengkap ?? ($user->username ?? 'Admin'));
+            $customLogDetail = $request->log_detail ?? "Admin menghapus (soft) dokumen {$trx->type} {$id}";
+            $this->writeLog($userLabel, 'DELETE', 'transactions', $customLogDetail);
+
             DB::commit();
             \Illuminate\Support\Facades\Cache::flush();
             event(new StokUpdated("Update dari Transaksi"));
-            return response()->json(['status' => 'success']);
+            return response()->json(['status' => 'success', 'message' => "Transaksi {$id} berhasil dihapus (soft delete)."]);
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Error in ' . __CLASS__ . '@' . __FUNCTION__ . ': ' . $e->getMessage());
@@ -1242,38 +1272,68 @@ class TransactionController extends Controller {
             $trx = DB::table('transactions')->where('idTransaksi', $id)->lockForUpdate()->first();
             if (!$trx) throw new \Exception('Transaksi tidak ditemukan.');
             if ($trx->status !== 'completed') throw new \Exception('Hanya transaksi completed yang bisa divoid.');
-            if ($trx->type !== 'OUT') throw new \Exception('Hanya transaksi keluar (OUT) yang bisa divoid.');
+            if (!in_array($trx->type, ['OUT', 'IN', 'MAKLOON_IN'])) {
+                throw new \Exception('Hanya transaksi masuk (IN) dan keluar (OUT) yang bisa divoid.');
+            }
 
-            $batchDetails = DB::table('transaction_batch_details')->where('idTransaksi', $id)->get();
-            $itemReversals = [];
-            
-            foreach ($batchDetails as $bd) {
-                DB::table('item_batches')
-                    ->where('id_batch', $bd->id_batch)
-                    ->increment('qty_sisa', $bd->qty_diambil);
+            if ($trx->type === 'OUT') {
+                $batchDetails = DB::table('transaction_batch_details')->where('idTransaksi', $id)->get();
+                $itemReversals = [];
                 
-                $batchInfo = DB::table('item_batches')->where('id_batch', $bd->id_batch)->first();
-                if ($batchInfo) {
-                    if (!isset($itemReversals[$batchInfo->kodeBarang])) {
-                        $itemReversals[$batchInfo->kodeBarang] = 0;
+                foreach ($batchDetails as $bd) {
+                    DB::table('item_batches')
+                        ->where('id_batch', $bd->id_batch)
+                        ->increment('qty_sisa', $bd->qty_diambil);
+                    
+                    $batchInfo = DB::table('item_batches')->where('id_batch', $bd->id_batch)->first();
+                    if ($batchInfo) {
+                        if (!isset($itemReversals[$batchInfo->kodeBarang])) {
+                            $itemReversals[$batchInfo->kodeBarang] = 0;
+                        }
+                        $itemReversals[$batchInfo->kodeBarang] += $bd->qty_diambil;
                     }
-                    $itemReversals[$batchInfo->kodeBarang] += $bd->qty_diambil;
                 }
-            }
-            
-            if (count($itemReversals) > 0) {
-                foreach ($itemReversals as $kodeBarang => $totalQty) {
-                    DB::table('items')->where('kodeBarang', $kodeBarang)->increment('stok', $totalQty);
+                
+                if (count($itemReversals) > 0) {
+                    foreach ($itemReversals as $kodeBarang => $totalQty) {
+                        DB::table('items')->where('kodeBarang', $kodeBarang)->increment('stok', $totalQty);
+                    }
+                } else {
+                    // Fallback for older transactions that don't have batch details
+                    $details = DB::table('transaction_details')->where('idTransaksi', $id)->get();
+                    foreach ($details as $detail) {
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
+                    }
                 }
-            } else {
-                // Fallback for older transactions that don't have batch details
-                $details = DB::table('transaction_details')->where('idTransaksi', $id)->get();
-                foreach ($details as $detail) {
-                    DB::table('items')->where('kodeBarang', $detail->kodeBarang)->increment('stok', $detail->jumlah);
+
+                DB::table('transaction_batch_details')->where('idTransaksi', $id)->delete();
+            } else if (in_array($trx->type, ['IN', 'MAKLOON_IN'])) {
+                // Untuk transaksi masuk (IN): verifikasi stok batch belum terpakai
+                $batches = DB::table('item_batches')->where('idTransaksi_masuk', $id)->get();
+                foreach ($batches as $b) {
+                    if ($b->qty_sisa < $b->qty_awal) {
+                        $terpakai = $b->qty_awal - $b->qty_sisa;
+                        throw new \Exception("Gagal Void: Sebagian stok batch item '{$b->kodeBarang}' ({$terpakai}) sudah terpakai/terjual.");
+                    }
+                    $itemMaster = DB::table('items')->where('kodeBarang', $b->kodeBarang)->first();
+                    if ($itemMaster && $itemMaster->stok < $b->qty_awal) {
+                        throw new \Exception("Gagal Void: Stok fisik barang '{$itemMaster->nama}' saat ini ({$itemMaster->stok}) tidak mencukupi untuk membatalkan kedatangan ({$b->qty_awal}).");
+                    }
+                }
+
+                foreach ($batches as $b) {
+                    DB::table('items')->where('kodeBarang', $b->kodeBarang)->decrement('stok', $b->qty_awal);
+                    DB::table('item_batches')->where('id_batch', $b->id_batch)->delete();
+                }
+
+                if ($batches->isEmpty()) {
+                    $details = DB::table('transaction_details')->where('idTransaksi', $id)->get();
+                    foreach ($details as $detail) {
+                        DB::table('items')->where('kodeBarang', $detail->kodeBarang)->decrement('stok', $detail->jumlah);
+                    }
                 }
             }
 
-            DB::table('transaction_batch_details')->where('idTransaksi', $id)->delete();
             DB::table('transactions')->where('idTransaksi', $id)->update(['status' => 'void']);
             
             return response()->json(['message' => 'Transaksi berhasil dibatalkan (void).', 'status' => 'success']);

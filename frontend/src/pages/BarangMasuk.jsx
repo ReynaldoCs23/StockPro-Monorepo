@@ -402,23 +402,6 @@ export default function BarangMasuk() {
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!confirm(`Hapus draft Transaksi Masuk ${id}? Data akan dihapus permanen.`)) return;
-        try {
-            if (!isApiOffline) {
-                await apiCall(`/transaction/IN/${id}`, 'DELETE', {
-                    log_user: currentUser.namaLengkap,
-                    log_detail: `Membatalkan Transaksi Masuk: ${id}`
-                });
-            }
-
-            setInbound(inbound.filter(t => t.idTransaksi !== id));
-            setToast({ message: "Transaksi berhasil dihapus!", type: "success" });
-        } catch (e) {
-            setToast({ message: "Gagal menghapus: " + e.message, type: "error" });
-        }
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         const validItems = cartItems.filter(c => c.kodeBarang && c.jumlah > 0);
@@ -505,12 +488,51 @@ export default function BarangMasuk() {
         finally { setIsProcessing(false); }
     };
 
+    const executeVoid = async (row) => {
+        setIsProcessing(true);
+        try {
+            await apiCall(`/transaction/${row.idTransaksi}/void`, 'POST');
+            await fetchTransactions();
+            setToast({ message: 'Transaksi berhasil dibatalkan (void)!', type: 'success' });
+            setConfirmAction(null);
+        } catch(e) { setToast({ message: e.message, type: 'error' }); }
+        finally { setIsProcessing(false); }
+    };
+
+    const executeDelete = async (row) => {
+        const id = typeof row === 'string' ? row : row.idTransaksi;
+        const type = (row && row.type) ? row.type : (id.startsWith('MKL') ? 'MAKLOON_IN' : 'IN');
+        setIsProcessing(true);
+        try {
+            if (!isApiOffline) {
+                await apiCall(`/transaction/${type}/${id}`, 'DELETE', {
+                    log_user: currentUser?.namaLengkap || 'Admin',
+                    log_detail: `Admin menghapus (soft) dokumen ${type} ${id}`
+                });
+            }
+
+            await fetchTransactions();
+            setToast({ message: "Transaksi berhasil dihapus dari tampilan!", type: "success" });
+            setConfirmAction(null);
+        } catch (e) {
+            setToast({ message: "Gagal menghapus: " + e.message, type: "error" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleApprove = (row) => setConfirmAction({ type: 'approve', row });
+    const handleVoid = (row) => setConfirmAction({ type: 'void', row });
+    const handleDelete = (target) => {
+        const row = typeof target === 'string' ? (inbound.find(t => t.idTransaksi === target) || { idTransaksi: target, type: target.startsWith('MKL') ? 'MAKLOON_IN' : 'IN' }) : target;
+        setConfirmAction({ type: 'delete', row });
+    };
 
     const reportColumns = [
         { key: 'idTransaksi', label: 'ID Transaksi' },
         { key: 'status', label: 'Status', format: (v) => {
             if (v === 'draft') return <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">DRAFT</span>;
+            if (v === 'void') return <span className="px-2 py-1 bg-rose-100 text-rose-800 rounded-md text-[10px] font-bold">VOID</span>;
             if (v === 'scheduled') return <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-[10px] font-bold">SCHEDULED</span>;
             return <span className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">COMPLETED</span>;
         } },
@@ -613,16 +635,25 @@ export default function BarangMasuk() {
                     }
                     columns={reportColumns}
                     currentPage={currentPage} lastPage={lastPage} onPageChange={setCurrentPage}
-                    extraActions={(row) => (
-                        <>
-                            {row.status === 'draft' && (
-                                <>
-                                    <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>
-                                    {can('delete_barang_masuk') && <button onClick={() => handleDelete(row.idTransaksi)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Draft"><Trash2 className="w-4 h-4" /></button>}
-                                </>
-                            )}
-                        </>
-                    )}
+                    extraActions={(row) => {
+                        const status = (row.status || '').toLowerCase();
+                        return (
+                            <>
+                                {status === 'draft' && (
+                                    <>
+                                        <button onClick={() => handleApprove(row)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors" title="Approve Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></button>
+                                        {can('delete_barang_masuk') && <button onClick={() => handleDelete(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Draft"><Trash2 className="w-4 h-4" /></button>}
+                                    </>
+                                )}
+                                {status === 'completed' && (
+                                    <button onClick={() => handleVoid(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Void Transaksi"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                                )}
+                                {status === 'void' && can('delete_barang_masuk') && (
+                                    <button onClick={() => handleDelete(row)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors" title="Hapus Transaksi Void"><Trash2 className="w-4 h-4" /></button>
+                                )}
+                            </>
+                        );
+                    }}
                     onAdd={can('create_barang_masuk') ? openAddModal : null}
                     onEdit={can('edit_barang_masuk') ? handleEdit : null}
                     onDelete={can('delete_barang_masuk') ? handleDelete : null}
@@ -639,11 +670,29 @@ export default function BarangMasuk() {
                 onConfirm={() => {
                     if (confirmAction?.type === 'approve') {
                         executeApprove(confirmAction.row);
+                    } else if (confirmAction?.type === 'void') {
+                        executeVoid(confirmAction.row);
+                    } else if (confirmAction?.type === 'delete') {
+                        executeDelete(confirmAction.row);
                     }
                     setConfirmAction(null);
                 }}
-                title="Approve Transaksi"
-                message="Approve transaksi ini? Stok fisik dan HPP akan terupdate secara permanen."
+                title={
+                    confirmAction?.type === 'approve' ? "Approve Transaksi" :
+                    confirmAction?.type === 'void' ? "Batalkan Transaksi (Void)" :
+                    "Hapus Transaksi"
+                }
+                message={
+                    confirmAction?.type === 'approve' ? "Approve transaksi ini? Stok fisik dan HPP akan terupdate secara permanen." :
+                    confirmAction?.type === 'void' ? "Batalkan (Void) transaksi masuk ini? Stok fisik dan batch yang masuk akan ditarik kembali." :
+                    "Data akan dihapus dari tampilan tabel dan laporan mutasi. Lanjutkan?"
+                }
+                confirmText={
+                    confirmAction?.type === 'approve' ? "Ya, Approve" :
+                    confirmAction?.type === 'void' ? "Ya, Batalkan (Void)" :
+                    "Ya, Hapus"
+                }
+                variant={confirmAction?.type === 'approve' ? "info" : "danger"}
             />
 
             <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title="Input Kedatangan Barang" width="max-w-4xl">

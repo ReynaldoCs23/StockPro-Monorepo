@@ -26,6 +26,7 @@ class ReportController extends Controller
                     ->join('transactions', 'transaction_details.idTransaksi', '=', 'transactions.idTransaksi')
                     ->whereIn('transactions.type', $types)
                     ->where('transactions.status', 'completed')
+                    ->whereNull('transactions.deleted_at')
                     ->whereBetween('transactions.tanggal', [$cleanStart, $cleanEnd])
                     ->select(
                         'transactions.idTransaksi',

@@ -44,6 +44,7 @@ class MasterDataController extends Controller {
                         DB::raw('COUNT(transaction_details.id) as total_item')
                     )
                     ->whereIn('transactions.type', ['IN', 'MAKLOON_IN'])
+                    ->whereNull('transactions.deleted_at')
                     ->groupBy(
                         'transactions.idTransaksi', 'transactions.type', 'transactions.tanggal', 
                         'transactions.sumber_tujuan', 'transactions.entitas', 'transactions.totalTransaksi',
@@ -73,6 +74,7 @@ class MasterDataController extends Controller {
                         DB::raw('COUNT(transaction_details.id) as total_item')
                     )
                     ->whereIn('transactions.type', ['OUT', 'MAKLOON_OUT'])
+                    ->whereNull('transactions.deleted_at')
                     ->groupBy(
                         'transactions.idTransaksi', 'transactions.type', 'transactions.tanggal', 
                         'transactions.sumber_tujuan', 'transactions.entitas', 'transactions.totalTransaksi',
@@ -105,6 +107,7 @@ class MasterDataController extends Controller {
                         DB::raw('COUNT(transaction_details.id) as total_item')
                     )
                     ->where('transactions.type', 'RET')
+                    ->whereNull('transactions.deleted_at')
                     ->groupBy(
                         'transactions.idTransaksi', 'transactions.type', 'transactions.tanggal', 
                         'transactions.sumber_tujuan', 'transactions.entitas', 'transactions.totalTransaksi',

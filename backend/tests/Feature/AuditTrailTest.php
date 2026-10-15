@@ -48,10 +48,11 @@ class AuditTrailTest extends TestCase
         // Critical Assertion: Assert the response is 200
         $response->assertStatus(200);
 
-        // Assert transaction is deleted
-        $this->assertDatabaseMissing('transactions', [
+        // Assert transaction is soft deleted (not hard deleted, audit safe)
+        $this->assertSoftDeleted('transactions', [
             'idTransaksi' => 'INV-TEST-DELETE'
         ]);
+        $this->assertNull(Transaction::find('INV-TEST-DELETE'));
 
         // Critical Assertion: Assert the system_logs (or logs) database table has a new record
         $this->assertDatabaseHas('logs', [

@@ -724,12 +724,12 @@ export default function BarangKeluar() {
                 message={
                     confirmAction?.type === 'approve' ? "Approve transaksi ini? Stok fisik akan terpotong secara FIFO." :
                     confirmAction?.type === 'void' ? "Batalkan (Void) transaksi ini? Alokasi FIFO akan dikembalikan." :
-                    `Yakin ingin menghapus permanen transaksi ${confirmAction?.row?.idTransaksi || ''} (${(confirmAction?.row?.status || '').toLowerCase() === 'void' ? 'Void' : 'Draft'})? Data tidak dapat dikembalikan.`
+                    "Data akan dihapus dari tampilan tabel dan laporan mutasi. Lanjutkan?"
                 }
                 confirmText={
                     confirmAction?.type === 'approve' ? "Ya, Approve" :
                     confirmAction?.type === 'void' ? "Ya, Batalkan (Void)" :
-                    "Ya, Hapus Permanen"
+                    "Ya, Hapus"
                 }
                 variant={confirmAction?.type === 'approve' ? "info" : "danger"}
             />
