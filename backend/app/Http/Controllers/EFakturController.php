@@ -275,7 +275,7 @@ class EFakturController extends Controller
             if (str_contains($rawInput, 'coretaxdjp.pajak.go.id')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tautan QR Coretax DJP ini diproteksi verifikasi CAPTCHA oleh DJP dan tidak menyediakan open API publik. Silakan scan Barcode Faktur fisik (format teks hashtag #) atau input nomor faktur secara manual.'
+                    'message' => 'Tautan QR Coretax DJP dilindungi verifikasi CAPTCHA oleh DJP. Silakan unggah langsung file PDF Faktur Pajak pada tab "Upload File" agar data terbaca otomatis, atau masukkan nomor faktur secara manual.'
                 ], 422);
             }
 

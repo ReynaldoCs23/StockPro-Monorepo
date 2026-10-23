@@ -1,15 +1,370 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { QrCode, Scan, X, Loader2, Camera, CameraOff, RefreshCw } from '../icons/Icons';
+import { QrCode, Scan, X, Loader2, Camera, CameraOff, RefreshCw, Upload, FileText } from '../icons/Icons';
+
+// ==========================================
+// Upload QR (read-only): file hanya diproses di browser, TIDAK dikirim/disimpan ke server
+// ==========================================
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_UPLOAD_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+const MAX_PDF_PAGES = 3;
+const MAX_CANVAS_DIM = 2400;
+const FILE_READER_ELEMENT_ID = 'efaktur-qr-file-reader';
+
+const loadImage = (blob) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Gagal membaca file gambar.')); };
+    img.src = url;
+});
+
+const canvasToFile = (canvas) => new Promise((resolve, reject) => {
+    canvas.toBlob(b => (b ? resolve(new File([b], 'qr.png', { type: 'image/png' })) : reject(new Error('Gagal memproses gambar.'))), 'image/png');
+});
+
+// Decode QR dari satu file gambar menggunakan html5-qrcode (tanpa kamera)
+const decodeQrFromImageFile = async (file) => {
+    const reader = new Html5Qrcode(FILE_READER_ELEMENT_ID, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false
+    });
+    try {
+        return await reader.scanFile(file, false);
+    } finally {
+        try { reader.clear(); } catch (e) { /* ignore */ }
+    }
+};
+
+// Coba decode gambar utuh; jika gagal, coba crop per kuadran + upscale
+// (QR e-Faktur umumnya berada di pojok dokumen dan bisa terlalu kecil untuk dideteksi)
+const decodeQrWithFallback = async (blob) => {
+    try {
+        return await decodeQrFromImageFile(blob instanceof File ? blob : new File([blob], 'qr.png', { type: blob.type || 'image/png' }));
+    } catch (e) { /* lanjut ke fallback */ }
+
+    const img = await loadImage(blob);
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    const regions = [
+        [0, 0, W, H],                 // utuh (di-upscale)
+        [W / 2, H / 2, W / 2, H / 2], // kanan bawah
+        [W / 2, 0, W / 2, H / 2],     // kanan atas
+        [0, H / 2, W / 2, H / 2],     // kiri bawah
+        [0, 0, W / 2, H / 2],         // kiri atas
+    ];
+
+    for (const [sx, sy, sw, sh] of regions) {
+        const scale = Math.max(1, Math.min(3, MAX_CANVAS_DIM / Math.max(sw, sh)));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(sw * scale);
+        canvas.height = Math.round(sh * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        try {
+            return await decodeQrFromImageFile(await canvasToFile(canvas));
+        } catch (e) { /* coba region berikutnya */ }
+    }
+    throw new Error('QR_NOT_FOUND');
+};
+
+// Helper mapping bulan bahasa Indonesia ke nomor bulan
+const INDO_MONTHS = {
+    januari: '01', februari: '02', maret: '03', april: '04',
+    mei: '05', juni: '06', juli: '07', agustus: '08',
+    september: '09', oktober: '10', november: '11', desember: '12',
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+};
+
+const parseIdrNum = (val) => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    const str = String(val).replace(/Rp\.?/gi, '').trim();
+    if (str.includes(',') && str.includes('.')) {
+        if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+            return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+        } else {
+            return parseFloat(str.replace(/,/g, '')) || 0;
+        }
+    } else if (str.includes(',')) {
+        const parts = str.split(',');
+        if (parts.length === 2 && parts[1].length <= 2) {
+            return parseFloat(parts[0].replace(/\./g, '') + '.' + parts[1]) || 0;
+        }
+        return parseFloat(str.replace(/,/g, '')) || 0;
+    }
+    return parseFloat(str) || 0;
+};
+
+const parseIndoDate = (str) => {
+    if (!str) return null;
+    const m1 = str.match(/(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})/i);
+    if (m1) {
+        const mo = INDO_MONTHS[m1[2].toLowerCase()];
+        if (mo) return `${m1[3]}-${mo}-${m1[1].padStart(2, '0')}`;
+    }
+    const m2 = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m2) return `${m2[3]}-${m2[2].padStart(2, '0')}-${m2[1].padStart(2, '0')}`;
+    const m3 = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (m3) return `${m3[1]}-${m3[2].padStart(2, '0')}-${m3[3].padStart(2, '0')}`;
+    return null;
+};
+
+// Ekstraksi baris teks dari halaman PDF via pdfjs
+const extractLinesFromPage = async (page) => {
+    const textContent = await page.getTextContent();
+    if (!textContent || !textContent.items || textContent.items.length === 0) return [];
+
+    const items = textContent.items
+        .filter(it => it.str && it.str.trim().length > 0)
+        .sort((a, b) => {
+            const dy = b.transform[5] - a.transform[5];
+            if (Math.abs(dy) > 3) return dy;
+            return a.transform[4] - b.transform[4];
+        });
+
+    const lines = [];
+    let currentLine = [];
+    let lastY = null;
+
+    for (const it of items) {
+        const y = it.transform[5];
+        if (lastY === null || Math.abs(lastY - y) <= 3) {
+            currentLine.push(it.str);
+        } else {
+            lines.push(currentLine.join(' ').replace(/\s+/g, ' ').trim());
+            currentLine = [it.str];
+        }
+        lastY = y;
+    }
+    if (currentLine.length > 0) {
+        lines.push(currentLine.join(' ').replace(/\s+/g, ' ').trim());
+    }
+    return lines;
+};
+
+// Parser teks e-Faktur terpadu (mendukung Coretax & PER-03 DJP)
+const parseFakturTextLines = (lines) => {
+    if (!lines || lines.length === 0) return null;
+    const fullText = lines.join('\n');
+
+    // 1. Nomor Faktur (Coretax 16 digit atau PER-03 XXX.XXX-XX.XXXXXXXX)
+    let nomorFaktur = '';
+    const mNo = fullText.match(/(?:Kode dan Nomor Seri Faktur Pajak|Nomor Faktur Pajak|Nomor Faktur|Nomor Dokumen)\s*[:\s]\s*([0-9\.\-\/]{13,24})/i);
+    if (mNo) {
+        nomorFaktur = mNo[1].trim();
+    } else {
+        const mFall = fullText.match(/\b(0[1-9][0-9][\.\-0-9]{11,18})\b/);
+        if (mFall) nomorFaktur = mFall[1].trim();
+    }
+
+    // 2. Identitas Penjual (Supplier)
+    let penjualNama = '';
+    let penjualNpwp = '';
+    const mPenjualSection = fullText.match(/(?:Pengusaha\s+Kena\s+Pajak|Identitas\s+Penjual|Data\s+Penjual)([\s\S]*?)(?:Pembeli\s+Barang\s+Kena\s+Pajak|Identitas\s+Pembeli|Data\s+Pembeli|$)/i);
+    const penjualText = mPenjualSection ? mPenjualSection[1] : fullText;
+
+    const mPenjualNama = penjualText.match(/Nama(?:\s*Wajib\s*Pajak)?\s*[:\s]\s*([^\r\n]+)/i);
+    if (mPenjualNama) penjualNama = mPenjualNama[1].replace(/^[^\w]+/, '').trim();
+
+    const mPenjualNpwp = penjualText.match(/NPWP(?:\s*\/\s*NIK)?\s*[:\s]\s*([0-9\.\-]+)/i);
+    if (mPenjualNpwp) penjualNpwp = mPenjualNpwp[1].trim();
+
+    // 3. Identitas Pembeli
+    let pembeliNama = '';
+    let pembeliNpwp = '';
+    const mPembeliSection = fullText.match(/(?:Pembeli\s+Barang\s+Kena\s+Pajak|Identitas\s+Pembeli|Data\s+Pembeli)([\s\S]*?)(?:Barang\s+Kena\s+Pajak|Harga\s+Jual|Dasar\s+Pengenaan|$)/i);
+    const pembeliText = mPembeliSection ? mPembeliSection[1] : '';
+
+    if (pembeliText) {
+        const mPembeliNama = pembeliText.match(/Nama(?:\s*Wajib\s*Pajak)?\s*[:\s]\s*([^\r\n]+)/i);
+        if (mPembeliNama) pembeliNama = mPembeliNama[1].replace(/^[^\w]+/, '').trim();
+
+        const mPembeliNpwp = pembeliText.match(/NPWP(?:\s*\/\s*NIK)?\s*[:\s]\s*([0-9\.\-]+)/i);
+        if (mPembeliNpwp) pembeliNpwp = mPembeliNpwp[1].trim();
+    }
+
+    // 4. Nilai Finansial
+    let dpp = 0;
+    let ppn = 0;
+    let ppnbm = 0;
+
+    const mDpp = fullText.match(/(?:Dasar\s+Pengenaan\s+Pajak|DPP)\s*[:\s]?\s*(?:Rp\.?)?\s*([0-9\.\,]+)/i);
+    if (mDpp) dpp = parseIdrNum(mDpp[1]);
+
+    const mPpn = fullText.match(/(?:Jumlah\s+PPN|Total\s+PPN|Pajak\s+Pertambahan\s+Nilai|PPN\s+11%|PPN)\s*[:\s]?\s*(?:Rp\.?)?\s*([0-9\.\,]+)/i);
+    if (mPpn) ppn = parseIdrNum(mPpn[1]);
+
+    const mPpnbm = fullText.match(/(?:Jumlah\s+PPnBM|Total\s+PPnBM|PPnBM)\s*[:\s]?\s*(?:Rp\.?)?\s*([0-9\.\,]+)/i);
+    if (mPpnbm) ppnbm = parseIdrNum(mPpnbm[1]);
+
+    // Fallback: Jika DPP belum terbaca, gunakan nilai Harga Jual / Penggantian
+    if (dpp === 0) {
+        const mHargaJual = fullText.match(/(?:Harga\s+Jual\s*\/?\s*Penggantian)\s*[:\s]?\s*(?:Rp\.?)?\s*([0-9\.\,]+)/i);
+        if (mHargaJual) dpp = parseIdrNum(mHargaJual[1]);
+    }
+    if (ppn === 0 && dpp > 0) {
+        ppn = Math.round(dpp * 0.11);
+    }
+
+    // 5. Tanggal Faktur
+    let tanggal = null;
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const parsed = parseIndoDate(lines[i]);
+        if (parsed) {
+            tanggal = parsed;
+            break;
+        }
+    }
+    if (!tanggal) {
+        tanggal = new Date().toISOString().split('T')[0];
+    }
+
+    // 6. Rincian Barang / Jasa
+    const items = [];
+    let inTable = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (/Nama\s+Barang\s+Kena\s+Pajak|Jasa\s+Kena\s+Pajak/i.test(line)) {
+            inTable = true;
+            continue;
+        }
+        if (/Harga\s+Jual\s*\/?\s*Penggantian|Dasar\s+Pengenaan\s+Pajak/i.test(line)) {
+            inTable = false;
+            break;
+        }
+        if (inTable) {
+            const mItem = line.match(/^(\d+)[\.\s]+(.+?)\s+([0-9\.\,]+)$/);
+            if (mItem) {
+                const totalItem = parseIdrNum(mItem[3]);
+                items.push({
+                    nama: mItem[2].trim(),
+                    jumlah: 1,
+                    harga_satuan: totalItem,
+                    total: totalItem,
+                    dpp: totalItem,
+                    ppn: Math.round(totalItem * 0.11)
+                });
+            }
+        }
+    }
+
+    if (items.length === 0 && dpp > 0) {
+        items.push({
+            nama: 'Penyerahan BKP / JKP sesuai Faktur ' + (nomorFaktur || ''),
+            jumlah: 1,
+            harga_satuan: dpp,
+            total: dpp,
+            dpp: dpp,
+            ppn: ppn
+        });
+    }
+
+    return {
+        nomor_faktur: nomorFaktur,
+        no_faktur: nomorFaktur,
+        tanggal: tanggal,
+        npwp: penjualNpwp,
+        nama: penjualNama,
+        supplier_name: penjualNama,
+        nama_pembeli: pembeliNama,
+        npwp_pembeli: pembeliNpwp,
+        dpp: dpp,
+        ppn: ppn,
+        ppnbm: ppnbm,
+        items: items
+    };
+};
+
+// Ekstrak data Faktur Pajak dari PDF: membaca teks dokumen + deteksi QR code
+const decodeQrFromPdf = async (file, onPreview) => {
+    const pdfjs = await import('pdfjs-dist');
+    const { default: workerSrc } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+    pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+
+    const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+    try {
+        const totalPages = Math.min(pdf.numPages, MAX_PDF_PAGES);
+        let allLines = [];
+        let qrText = '';
+
+        for (let i = 1; i <= totalPages; i++) {
+            const page = await pdf.getPage(i);
+
+            // 1. Ekstrak teks halaman PDF
+            try {
+                const lines = await extractLinesFromPage(page);
+                allLines = allLines.concat(lines);
+            } catch (txtErr) {
+                console.warn('Gagal ekstrak teks dari halaman PDF ' + i, txtErr);
+            }
+
+            // 2. Render halaman ke canvas untuk preview & pembacaan barcode QR
+            const baseViewport = page.getViewport({ scale: 1 });
+            const scale = Math.min(3, MAX_CANVAS_DIM / Math.max(baseViewport.width, baseViewport.height));
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(viewport.width);
+            canvas.height = Math.round(viewport.height);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+
+            if (i === 1 && onPreview) {
+                onPreview(canvas.toDataURL('image/jpeg', 0.6));
+            }
+
+            if (!qrText) {
+                try {
+                    qrText = await decodeQrWithFallback(await canvasToFile(canvas));
+                } catch (e) { /* QR belum terdeteksi pada halaman ini */ }
+            }
+        }
+
+        // 3. Parse isi teks e-Faktur / Coretax
+        const parsed = parseFakturTextLines(allLines);
+
+        // Jika berhasil mendapatkan data faktur dari teks dokumen PDF:
+        if (parsed && (parsed.nomor_faktur || parsed.dpp > 0 || parsed.nama)) {
+            return {
+                ...parsed,
+                qrUrl: qrText || ''
+            };
+        }
+
+        // Jika PDF hanya berupa flat image hasil scan tanpa teks layer, gunakan QR text
+        if (qrText) {
+            return { qrUrl: qrText };
+        }
+
+        throw new Error('QR_NOT_FOUND');
+    } finally {
+        try { await pdf.destroy(); } catch (e) { /* ignore */ }
+    }
+};
 
 export default function EFakturScannerModal({ isOpen, onClose, onScan, isProcessing }) {
-    const [scanMode, setScanMode] = useState('camera'); // 'camera' | 'manual'
+    const [scanMode, setScanMode] = useState('camera'); // 'camera' | 'manual' | 'upload'
     const [qrUrl, setQrUrl] = useState('');
     const [cameraError, setCameraError] = useState(null);
     const [cameras, setCameras] = useState([]);
     const [selectedCameraId, setSelectedCameraId] = useState('');
     const [isCameraStarting, setIsCameraStarting] = useState(false);
     const [isCameraActive, setIsCameraActive] = useState(false);
+
+    // State mode upload
+    const [uploadFile, setUploadFile] = useState(null);
+    const [uploadPreview, setUploadPreview] = useState(null);
+    const [uploadError, setUploadError] = useState(null);
+    const [isDecoding, setIsDecoding] = useState(false);
+    const [decodedText, setDecodedText] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
+    const fileInputRef = useRef(null);
 
     const scannerRef = useRef(null);
     const isStoppingRef = useRef(false);
@@ -152,6 +507,91 @@ export default function EFakturScannerModal({ isOpen, onClose, onScan, isProcess
         }
     }, [isOpen, scanMode]);
 
+    // Bersihkan preview object URL agar tidak bocor memori
+    useEffect(() => {
+        return () => {
+            if (uploadPreview && uploadPreview.startsWith('blob:')) URL.revokeObjectURL(uploadPreview);
+        };
+    }, [uploadPreview]);
+
+    const resetUpload = () => {
+        setUploadFile(null);
+        setUploadPreview(null);
+        setUploadError(null);
+        setDecodedText('');
+        setIsDecoding(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // Reset state upload saat modal ditutup
+    useEffect(() => {
+        if (!isOpen) resetUpload();
+    }, [isOpen]);
+
+    // Proses file yang di-upload: validasi -> decode QR di browser -> onScan
+    const handleFileSelected = async (file) => {
+        if (!file || isDecoding || isProcessing) return;
+        resetUpload();
+
+        if (!ALLOWED_UPLOAD_TYPES.includes(file.type)) {
+            setUploadError('Format file tidak didukung. Gunakan PNG, JPG, WEBP, atau PDF.');
+            return;
+        }
+        if (file.size > MAX_UPLOAD_SIZE) {
+            setUploadError('Ukuran file melebihi batas 10 MB.');
+            return;
+        }
+
+        const isPdf = file.type === 'application/pdf';
+        setUploadFile(file);
+        if (!isPdf) setUploadPreview(URL.createObjectURL(file));
+        setIsDecoding(true);
+
+        try {
+            let scanResult;
+            if (isPdf) {
+                scanResult = await decodeQrFromPdf(file, setUploadPreview);
+            } else {
+                const qrText = await decodeQrWithFallback(file);
+                scanResult = (qrText || '').trim();
+            }
+
+            if (!scanResult) throw new Error('QR_NOT_FOUND');
+
+            const isObj = typeof scanResult === 'object' && scanResult !== null;
+            let displayLabel = '';
+            if (isObj) {
+                if (scanResult.nomor_faktur) {
+                    displayLabel = `No. Faktur: ${scanResult.nomor_faktur} | Supplier: ${scanResult.nama || '-'} | DPP: ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(scanResult.dpp || 0)}`;
+                } else {
+                    displayLabel = scanResult.qrUrl || 'Dokumen Faktur Pajak Berhasil Dibaca';
+                }
+            } else {
+                displayLabel = scanResult;
+            }
+
+            setDecodedText(displayLabel);
+            playSuccessBeep();
+            onScan(scanResult);
+        } catch (err) {
+            console.warn('Upload QR decode error:', err);
+            setUploadError(
+                err?.message === 'QR_NOT_FOUND' || /No MultiFormat Readers|NotFoundException/i.test(err?.message || '')
+                    ? 'Tidak dapat mendeteksi barcode QR maupun teks Faktur Pajak pada file. Pastikan dokumen jelas dan tidak buram.'
+                    : 'Gagal membaca file: ' + (err?.message || 'File rusak atau tidak valid.')
+            );
+        } finally {
+            setIsDecoding(false);
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (file) handleFileSelected(file);
+    };
+
     // Handle close modal
     const handleClose = async () => {
         await stopScanner();
@@ -228,7 +668,24 @@ export default function EFakturScannerModal({ isOpen, onClose, onScan, isProcess
                         <Scan className="w-4 h-4" />
                         <span>Scanner Gun / Tempel Link</span>
                     </button>
+                    <button
+                        type="button"
+                        id="efaktur-tab-upload"
+                        onClick={() => setScanMode('upload')}
+                        disabled={isProcessing || isDecoding}
+                        className={`flex items-center gap-2 px-4 py-2 text-xs md:text-sm font-bold border-b-2 transition-all cursor-pointer ${
+                            scanMode === 'upload'
+                                ? 'border-blue-600 text-blue-600 bg-white rounded-t-lg shadow-xs'
+                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        <Upload className="w-4 h-4" />
+                        <span>Upload File</span>
+                    </button>
                 </div>
+
+                {/* Container tersembunyi yang dibutuhkan html5-qrcode untuk scanFile() */}
+                <div id={FILE_READER_ELEMENT_ID} className="hidden" />
 
                 {/* Body Content */}
                 <div className="p-5 overflow-y-auto space-y-4">
@@ -271,6 +728,14 @@ export default function EFakturScannerModal({ isOpen, onClose, onScan, isProcess
                                                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                                             >
                                                 Gunakan Manual
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setScanMode('upload')}
+                                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                            >
+                                                <Upload className="w-3.5 h-3.5" />
+                                                <span>Upload File</span>
                                             </button>
                                         </div>
                                     </div>
@@ -375,6 +840,106 @@ export default function EFakturScannerModal({ isOpen, onClose, onScan, isProcess
                                 </button>
                             </div>
                         </form>
+                    )}
+
+                    {/* MODE 3: UPLOAD FILE GAMBAR / PDF (READ-ONLY) */}
+                    {scanMode === 'upload' && (
+                        <div className="space-y-4">
+                            <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-800 leading-relaxed">
+                                <p className="font-semibold mb-1 flex items-center gap-1.5">
+                                    <Upload className="w-4 h-4 text-blue-600" /> Upload Gambar / PDF Faktur:
+                                </p>
+                                Pilih screenshot/foto QR atau file PDF e-Faktur. File <b>hanya dibaca di browser</b> untuk mengambil QR, tidak diunggah atau disimpan ke server.
+                            </div>
+
+                            <input
+                                ref={fileInputRef}
+                                id="efaktur-upload-input"
+                                type="file"
+                                accept={ALLOWED_UPLOAD_TYPES.join(',')}
+                                className="hidden"
+                                onChange={(e) => handleFileSelected(e.target.files?.[0])}
+                            />
+
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                id="efaktur-upload-dropzone"
+                                onClick={() => !isDecoding && !isProcessing && fileInputRef.current?.click()}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+                                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                onDragLeave={() => setIsDragging(false)}
+                                onDrop={handleDrop}
+                                className={`relative w-full min-h-[220px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-4 text-center transition-all cursor-pointer overflow-hidden ${
+                                    isDragging
+                                        ? 'border-blue-500 bg-blue-50 scale-[1.01]'
+                                        : uploadError
+                                            ? 'border-rose-300 bg-rose-50/40'
+                                            : 'border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50/40'
+                                }`}
+                            >
+                                {uploadPreview ? (
+                                    <img src={uploadPreview} alt="Preview file e-Faktur" className="max-h-[200px] max-w-full object-contain rounded-lg shadow-sm" />
+                                ) : uploadFile ? (
+                                    <div className="flex flex-col items-center text-slate-500">
+                                        <FileText className="w-10 h-10 mb-2 text-blue-500" />
+                                        <p className="text-xs font-semibold">Memuat dokumen...</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center">
+                                        <div className="p-3 bg-blue-100 text-blue-600 rounded-full mb-3">
+                                            <Upload className="w-6 h-6" />
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-700">Klik untuk pilih file atau drag &amp; drop</p>
+                                        <p className="text-[11px] text-slate-500 mt-1">PNG, JPG, WEBP, atau PDF — maks. 10 MB</p>
+                                    </div>
+                                )}
+
+                                {(isDecoding || isProcessing) && (
+                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-xs flex flex-col items-center justify-center text-white p-4 z-10">
+                                        <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-2" />
+                                        <p className="text-sm font-bold">{isDecoding ? 'Membaca QR dari file...' : 'Mengekstrak Data e-Faktur...'}</p>
+                                        <p className="text-xs text-slate-300 mt-1">{isDecoding ? 'Mendeteksi barcode pada dokumen' : 'Mengambil DPP, PPN, dan No. Faktur'}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {uploadFile && (
+                                <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                    <span className="flex items-center gap-1.5 font-medium text-slate-700 truncate">
+                                        <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                        <span className="truncate">{uploadFile.name}</span>
+                                        <span className="text-slate-400 shrink-0">({(uploadFile.size / 1024).toFixed(0)} KB)</span>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => { resetUpload(); fileInputRef.current?.click(); }}
+                                        disabled={isDecoding || isProcessing}
+                                        className="shrink-0 px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        Pilih File Lain
+                                    </button>
+                                </div>
+                            )}
+
+                            {uploadError && (
+                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
+                                    {uploadError}
+                                </div>
+                            )}
+
+                            {decodedText && !uploadError && (
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Hasil Baca QR</label>
+                                    <textarea
+                                        readOnly
+                                        rows={2}
+                                        value={decodedText}
+                                        className="w-full p-2.5 text-xs border border-emerald-200 bg-emerald-50/50 rounded-xl outline-none font-mono text-slate-700"
+                                    />
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 

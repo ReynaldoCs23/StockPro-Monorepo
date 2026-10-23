@@ -283,13 +283,24 @@ export default function BarangKeluar() {
         setPrintData(row);
     };
 
-    // Auto-Fill Form dari Hasil Scan e-Faktur (DJP QR Code)
+    // Auto-Fill Form dari Hasil Scan e-Faktur (DJP QR Code atau Ekstraksi PDF Langsung)
     // PERINGATAN: Fungsi ini HANYA mengisi state form di layar dan TIDAK menyimpan ke database
-    const handleScanSuccess = async (qrUrl) => {
+    const handleScanSuccess = async (scanResult) => {
         setIsScanning(true);
         try {
-            const res = await apiCall('/efaktur/extract', 'POST', { qrUrl });
-            const data = res?.data || res;
+            let data = null;
+
+            // Jika scanResult sudah membawa objek data faktur (dari hasil parsing dokumen PDF langsung di browser)
+            if (scanResult && typeof scanResult === 'object' && (scanResult.nomor_faktur || scanResult.no_faktur || scanResult.dpp > 0 || scanResult.nama_pembeli || scanResult.nama)) {
+                data = scanResult;
+            } else {
+                const qrUrl = typeof scanResult === 'string' ? scanResult : scanResult?.qrUrl;
+                if (!qrUrl) {
+                    throw new Error('Hasil scan tidak memuat data faktur atau QR yang valid.');
+                }
+                const res = await apiCall('/efaktur/extract', 'POST', { qrUrl });
+                data = res?.data || res;
+            }
 
             if (!data) {
                 throw new Error('Data e-Faktur tidak ditemukan atau format tidak sesuai.');
