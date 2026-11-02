@@ -25,7 +25,11 @@ client = genai.Client(api_key=API_KEY)
 # Konfigurasi API Backend Laravel
 # PENTING: pakai port 8001 (server Laravel terpisah). `php artisan serve` di Windows hanya
 # single-thread; jika AI memanggil balik port 8000 yang sedang menunggu jawaban AI -> deadlock.
-LARAVEL_API_URL = os.environ.get("LARAVEL_API_URL", "http://127.0.0.1:8001/api/ai-data")
+# Host/IP backend Laravel diambil dari .env (API_TARGET_URL) agar tidak bentrok antara lokal & VPS.
+# LARAVEL_API_URL tetap bisa diisi penuh di .env untuk override seluruh URL.
+API_TARGET_URL = os.getenv('API_TARGET_URL', '127.0.0.1')
+LARAVEL_API_PORT = os.getenv('LARAVEL_API_PORT', '8001')
+LARAVEL_API_URL = os.getenv("LARAVEL_API_URL", f"http://{API_TARGET_URL}:{LARAVEL_API_PORT}/api/ai-data")
 AI_API_KEY = os.environ.get("AI_API_KEY", "")
 
 # Reuse koneksi TCP (keep-alive) agar setiap tool call lebih cepat
@@ -252,5 +256,9 @@ def chat():
     return jsonify({"answer": answer})
 
 if __name__ == '__main__':
-    print(f"AI Chatbot Server (Flask + Gemini {GEMINI_MODEL}) mulai berjalan di http://127.0.0.1:5000 ...")
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    # Host/port bind server Flask diambil dari .env (default sama seperti sebelumnya)
+    AI_ENGINE_HOST = os.getenv('AI_ENGINE_HOST', '127.0.0.1')
+    AI_ENGINE_PORT = int(os.getenv('AI_ENGINE_PORT', '5000'))
+    FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'true').lower() in ('1', 'true', 'yes')
+    print(f"AI Chatbot Server (Flask + Gemini {GEMINI_MODEL}) mulai berjalan di http://{AI_ENGINE_HOST}:{AI_ENGINE_PORT} ...")
+    app.run(host=AI_ENGINE_HOST, port=AI_ENGINE_PORT, debug=FLASK_DEBUG)

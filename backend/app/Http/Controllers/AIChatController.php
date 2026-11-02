@@ -15,7 +15,9 @@ class AIChatController extends Controller
 
         try {
             // Naikkan timeout jadi 300 detik (5 menit) karena proses AI dan pemanggilan multi-tools bisa memakan waktu lama
-            $response = Http::timeout(300)->post('http://127.0.0.1:5000/chat', [
+            // URL mesin AI diambil dari config/services.php -> AI_ENGINE_URL di .env
+            $aiEngineUrl = rtrim(config('services.ai_engine.url'), '/');
+            $response = Http::timeout(300)->post($aiEngineUrl . '/chat', [
                 'question' => $request->question
             ]);
 
