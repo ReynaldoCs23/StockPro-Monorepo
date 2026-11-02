@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Send, Loader2, Sparkles, X, MessageSquare } from './icons/Icons';
 import useAppStore from '../store/useAppStore';
 import { formatAIMarkdown } from '../utils/helpers';
+import { getApiBaseUrl } from '../utils/api';
 
 const FloatingAIChat = () => {
     const { user } = useAppStore();
@@ -34,9 +35,9 @@ const FloatingAIChat = () => {
 
         try {
             const token = localStorage.getItem('auth_token');
-            const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const apiBaseUrl = getApiBaseUrl();
             const res = await axios.post(
-                `${baseURL}/api/ask-ai`,
+                `${apiBaseUrl}/ask-ai`,
                 { question: userMsg.text },
                 {
                     headers: { 

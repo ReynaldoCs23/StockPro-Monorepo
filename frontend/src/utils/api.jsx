@@ -1,3 +1,9 @@
+export const getApiBaseUrl = () => {
+    const raw = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+    const clean = String(raw).trim().replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+};
+
 export const apiCall = async (endpoint, method = 'GET', body = null) => {
     try {
         const headers = {
@@ -16,7 +22,7 @@ export const apiCall = async (endpoint, method = 'GET', body = null) => {
         
         if (body) options.body = JSON.stringify(body);
 
-        const API_BASE_URL = 'http://127.0.0.1:8000/api';
+        const API_BASE_URL = getApiBaseUrl();
         const res = await fetch(`${API_BASE_URL}${endpoint}`, options);
 
         // 1. Cek apakah HTTP Status gagal (misal: 404, 500)

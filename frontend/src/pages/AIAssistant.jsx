@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Send, Loader2, Sparkles, User, Copy, Download } from '../components/icons/Icons';
 import useAppStore from '../store/useAppStore';
 import { formatAIMarkdown } from '../utils/helpers';
+import { getApiBaseUrl } from '../utils/api';
 
 export default function AIAssistant() {
     const { currentUser } = useAppStore();
@@ -40,9 +41,9 @@ export default function AIAssistant() {
 
         try {
             // Konfigurasi axios jika backend ada di port berbeda atau butuh token
-            const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const apiBaseUrl = getApiBaseUrl();
             
-            const response = await axios.post(`${baseURL}/api/ask-ai`, 
+            const response = await axios.post(`${apiBaseUrl}/ask-ai`, 
                 { question: question },
                 {
                     headers: {

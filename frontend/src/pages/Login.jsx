@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 import { Factory, User, Lock } from '../components/icons/Icons';
 import { getLocalYYYYMMDD } from '../utils/helpers';
+import { getApiBaseUrl } from '../utils/api';
 import logoImg from '/Images/LogoStockPro.png';
 import useAppStore from '../store/useAppStore';
 
@@ -45,7 +46,7 @@ export default function Login({ fetchAllData }) {
         // Online mode: call backend API
         setIsLoading(true);
         try {
-            const res = await fetch('http://127.0.0.1:8000/api/login', {
+            const res = await fetch(`${getApiBaseUrl()}/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify(loginData),
