@@ -73,39 +73,37 @@ class AIDataController extends Controller
         return response()->json($result);
     }
 
-    public function getMutations(Request $request) {
+    /**
+     * Data mutasi untuk Asisten AI. Memakai MutasiReportService yang SAMA dengan modul
+     * "Laporan Mutasi" agar total masuk/keluar/nilai identik (status completed, tidak terhapus,
+     * seluruh item detail termasuk transaksi multi-item, qty dalam satuan dasar).
+     */
+    public function getMutations(Request $request, \App\Services\MutasiReportService $service) {
         $this->checkAuth($request);
         $start_date = $request->input('start_date');
         $end_date = $request->input('end_date');
-        $search_item = $request->input('search_item');
+        $search_item = trim((string) $request->input('search_item', ''));
 
-        $query = "
-        SELECT d.namaBarang, 
-            CASE 
-                WHEN t.type = 'IN' THEN 'Masuk'
-                WHEN t.type = 'OUT' THEN 'Keluar'
-                WHEN t.type = 'RET' THEN 'Return'
-                WHEN t.type = 'MAKLOON_OUT' THEN 'Mkl_Out'
-                WHEN t.type = 'MAKLOON_IN' THEN 'Mkl_In'
-                ELSE t.type 
-            END as jenis, 
-            SUM(d.jumlah) as total_qty 
-        FROM transaction_details d 
-        JOIN transactions t ON t.idTransaksi = d.idTransaksi 
-        WHERE DATE(t.tanggal) BETWEEN ? AND ? AND t.status = 'completed'
-        ";
-        
-        $bindings = [$start_date, $end_date];
-        
-        if (!empty($search_item)) {
-            $query .= " AND d.namaBarang LIKE ? ";
-            $bindings[] = '%' . $search_item . '%';
+        $report = $service->build($start_date, $end_date);
+        $perBarang = \App\Services\MutasiReportService::perBarangLengkap($report);
+        if ($search_item !== '') {
+            $perBarang = array_values(array_filter($perBarang, fn ($b) => stripos($b['nama_barang'], $search_item) !== false));
         }
 
-        $query .= " GROUP BY d.namaBarang, t.type ORDER BY total_qty DESC LIMIT 50";
-
-        $data = DB::select($query, $bindings);
-        return response()->json($data);
+        $s = $report['summary'];
+        return response()->json([
+            'periode' => $report['periode'],
+            'sumber' => 'Modul Laporan Mutasi (perhitungan identik)',
+            'ringkasan' => [
+                'masuk' => ['transaksi' => $s['inbound']['count'], 'qty_barang_fisik' => $s['inbound']['qty_fisik'], 'qty_jasa' => $s['inbound']['qty_jasa'], 'nilai_rp' => $s['inbound']['nilai']],
+                'keluar' => ['transaksi' => $s['outbound']['count'], 'qty_barang_fisik' => $s['outbound']['qty_fisik'], 'qty_jasa' => $s['outbound']['qty_jasa'], 'nilai_rp' => $s['outbound']['nilai']],
+                'retur' => ['kasus' => $s['returns']['count'], 'qty' => $s['returns']['qty'], 'nilai_rp' => $s['returns']['nilai']],
+                'saldo_rekonsiliasi_rp' => $s['net']['nilai'],
+                'catatan' => 'Nilai Rp termasuk PPN 11%; nilai per transaksi dibulatkan ke rupiah lalu dijumlahkan. Qty dalam satuan dasar tiap barang.',
+            ],
+            'filter_barang' => $search_item !== '' ? $search_item : null,
+            'per_barang' => $perBarang,
+        ]);
     }
 
     public function getSchema(Request $request) {

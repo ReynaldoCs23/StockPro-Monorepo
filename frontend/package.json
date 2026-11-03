@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test": "node --test \"src/**/*.test.js\""
     },
     "devDependencies": {
         "@laravel/echo-react": "^2.3.3",
@@ -30,6 +31,7 @@
         "react-markdown": "^10.1.0",
         "react-router-dom": "^7.18.1",
         "recharts": "^3.8.1",
+        "rehype-sanitize": "^6.0.0",
         "remark-gfm": "^4.0.1",
         "sweetalert2": "^11.26.25",
         "zustand": "^5.0.14"

@@ -115,16 +115,48 @@ def get_financial_summary(start_date: str, end_date: str) -> str:
     except Exception as e:
         return f"Error API: {e}"
 
+def fmt_id(n) -> str:
+    """Format angka gaya Indonesia: 68403 -> 68.403 (bilangan bulat), desimal pakai koma."""
+    try:
+        x = float(n)
+    except (TypeError, ValueError):
+        return str(n)
+    if x.is_integer():
+        return f"{int(x):,}".replace(",", ".")
+    return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 def get_item_mutations(start_date: str, end_date: str, search_item: str = "") -> str:
-    """Mengambil riwayat mutasi barang masuk/keluar/retur/makloon (maksimal 50 barang teratas) untuk rentang tanggal (YYYY-MM-DD). Isi search_item HANYA JIKA user mencari mutasi barang spesifik."""
+    """Mengambil mutasi barang masuk/keluar/retur per barang untuk rentang tanggal (YYYY-MM-DD), dihitung dengan modul Laporan Mutasi (angka identik). Berisi SEMUA barang (termasuk dari transaksi multi-item), satuan dasar, jenis (Barang Fisik / Jasa/Non-Stok), info konversi box, serta ringkasan total & nilai Rp. Isi search_item HANYA JIKA user mencari barang spesifik."""
     try:
         data = fetch_from_laravel("mutations", {"start_date": start_date, "end_date": end_date, "search_item": search_item})
         if data is None:
             return "ERROR: Gagal mengambil data dari server. Sampaikan ke user bahwa data tidak dapat diakses saat ini (JANGAN bilang datanya kosong)."
-        if not data:
+        barang = data.get("per_barang", []) if isinstance(data, dict) else []
+        r = data.get("ringkasan", {}) if isinstance(data, dict) else {}
+        if not barang:
             return f"Tidak ada mutasi dari {start_date} hingga {end_date}."
-        df = pd.DataFrame(data)
-        return df.to_csv(index=False)
+
+        m, k, rt = r.get("masuk", {}), r.get("keluar", {}), r.get("retur", {})
+        lines = [
+            f"SUMBER: {data.get('sumber')} | Periode {data['periode']['start']} s.d {data['periode']['end']}",
+            "[RINGKASAN TOTAL - wajib sama dengan Laporan Mutasi]",
+            f"Masuk: {fmt_id(m.get('transaksi'))} transaksi, {fmt_id(m.get('qty_barang_fisik'))} unit barang fisik (lintas satuan), nilai Rp {fmt_id(m.get('nilai_rp'))}",
+            f"Keluar: {fmt_id(k.get('transaksi'))} transaksi, {fmt_id(k.get('qty_barang_fisik'))} unit barang fisik + {fmt_id(k.get('qty_jasa'))} unit jasa (non-stok), nilai Rp {fmt_id(k.get('nilai_rp'))}",
+            f"Retur: {fmt_id(rt.get('kasus'))} kasus, {fmt_id(rt.get('qty'))} unit, nilai Rp {fmt_id(rt.get('nilai_rp'))}",
+            f"Saldo rekonsiliasi nilai (masuk - keluar - retur): Rp {fmt_id(r.get('saldo_rekonsiliasi_rp'))}",
+            f"Catatan: {r.get('catatan')}",
+        ]
+        if data.get("filter_barang"):
+            lines.append(f"(Daftar per barang difilter: '{data['filter_barang']}'; ringkasan total tetap untuk seluruh periode.)")
+        lines.append("[PER BARANG - qty dalam satuan dasar; jangan jumlahkan lintas satuan]")
+        lines.append("jenis;kode;nama_barang;satuan;masuk;keluar;retur;net;trx_masuk;trx_keluar;trx_retur;konversi")
+        for b in barang:
+            lines.append(";".join([
+                b.get("jenis", ""), b.get("kode_barang", ""), b.get("nama_barang", ""), str(b.get("satuan", "")).lower(),
+                fmt_id(b.get("masuk")), fmt_id(b.get("keluar")), fmt_id(b.get("retur")), fmt_id(b.get("net")),
+                fmt_id(b.get("trx_masuk")), fmt_id(b.get("trx_keluar")), fmt_id(b.get("trx_retur")), b.get("konversi") or "-",
+            ]))
+        return "\n".join(lines)
     except Exception as e:
         return f"Error API: {e}"
 
@@ -176,24 +208,32 @@ ATURAN AKURASI (WAJIB):
 - Tampilkan angka persis seperti yang diberikan alat, jangan dibulatkan atau dikarang.
 - Jika alat mengembalikan "ERROR", katakan data gagal diakses, BUKAN data kosong.
 
-PANDUAN MEMBERIKAN INSIGHT (PENTING!):
-- Jangan hanya membacakan ulang data mentah (angka/tabel). 
-- Selalu berikan **Business Insight** atau analisis lanjutan dari data yang Anda temukan berdasarkan konteks bisnis distribusi PT Mara Jaya Dewi Sakti.
-- Contoh: Jika ada barang yang sering keluar, sebutkan barang tersebut sebagai "Best Seller" dan rekomendasikan restock.
-- Contoh: Jika melihat tren pengeluaran membengkak, berikan peringatan atau opini ringkas.
-- Hubungkan titik-titik data untuk membentuk narasi yang berguna bagi pemilik bisnis.
+AKURASI ANALISIS MUTASI (WAJIB):
+- Gunakan HANYA data dari hasil alat/query database. Jangan mengarang angka. Jika data tidak ada atau tidak lengkap, tulis di "Catatan Data".
+- Untuk mutasi barang, panggil get_item_mutations. Angkanya dihitung dengan modul "Laporan Mutasi" yang sama; tampilkan total masuk, total keluar, dan nilai persis seperti di bagian RINGKASAN TOTAL. Jika Anda memakai sumber lain (mis. execute_sql_query) dan angkanya berbeda dari ringkasan tersebut, sebutkan perbedaannya di "Catatan Data".
+- Barang berjenis "Jasa/Non-Stok" (mis. Jasa SIPEMA ONLINE) BUKAN stok fisik: tampilkan terpisah dari barang fisik, jangan dijumlahkan ke total unit barang, dan jangan menyimpulkan "adopsi", "pemanfaatan", "permintaan", atau "pertumbuhan" dari angka jasa tanpa data pendukung. Cukup laporkan angka dan nilainya.
+- Jangan menjumlahkan satuan yang berbeda (galon, unit, pcs, box, karton, laporan) menjadi satu angka. Tampilkan net mutasi per barang beserta satuannya.
+- Qty selalu dalam satuan dasar barang. Untuk barang yang dibeli per box, sebutkan konversinya bila relevan (lihat kolom konversi, mis. "dibeli 1.380 box x 12 pcs"). Konversi HANYA berlaku untuk barang pada baris yang kolom konversinya terisi; jangan menempelkannya ke barang lain.
+- Sertakan SEMUA barang pada periode tersebut di tabel Ringkasan (termasuk barang dari transaksi dengan banyak produk). Jangan memotong daftar menjadi "item teratas".
+- Laporan mutasi hanya mencakup periode berjalan, tidak memuat saldo awal stok; jangan menyimpulkan posisi stok akhir dari angka mutasi saja.
 
-ATURAN FORMATTING (SANGAT PENTING):
-- Gunakan bahasa Indonesia yang profesional, ringkas, namun berwawasan.
-- Utamakan poin-poin (bullet points) atau daftar berstruktur agar data mudah dibaca di layar chat.
-- JIKA menyajikan data tabel Markdown (misalnya: daftar mutasi barang atau perbandingan):
-  * WAJIB gunakan baris baru (newline) standar di setiap baris tabel.
-  * DILARANG KERAS menyambung baris tabel dengan tanda '||' dalam satu baris! Setiap baris tabel HARUS berada di baris tersendiri yang dipisahkan baris baru (\n).
-  * Berikan baris kosong sebelum baris header tabel dan sesudah baris tabel terakhir.
-  * Buat kolom tabel sesederhana mungkin (maksimal 3-4 kolom, misal: | Nama Barang | Jenis | Qty |).
-  * Jika daftar barang banyak (> 10 item), prioritaskan 5-8 item teratas yang paling signifikan, lalu rangkum sisanya agar respons tidak menumpuk.
-- JANGAN gunakan format matematika LaTeX ($ atau \frac). 
-- JANGAN pernah menampilkan query SQL kepada pengguna.
+PANDUAN INSIGHT:
+- Jangan hanya membacakan ulang data mentah. Berikan insight bisnis yang relevan untuk distribusi PT Mara Jaya Dewi Sakti, misalnya barang dengan perputaran tertinggi, bahan baku yang menumpuk tanpa keluaran, atau ketidakseimbangan masuk-keluar per barang.
+- Setiap insight harus didukung angka dari data. Bila hanya dugaan, tandai sebagai dugaan.
+- Jangan mengaitkan angka dengan wilayah, pelanggan, atau penyebab yang tidak tercantum di data.
+- Nilai rupiah negatif ditulis "-Rp 33.768.851" (tanda minus sebelum "Rp").
+
+FORMAT OUTPUT (WAJIB):
+- Selalu jawab dalam Bahasa Indonesia dengan markdown yang valid. Jangan gunakan HTML, jangan mengulang pertanyaan user, jangan memakai emoji, jangan memakai LaTeX ($ atau \\frac), jangan menampilkan query SQL.
+- Untuk analisis data, gunakan struktur ini:
+  1. Satu kalimat pembuka singkat (tanpa heading).
+  2. "## Ringkasan" berisi tabel markdown. Untuk mutasi: kolom | Nama Barang | Satuan | Masuk | Keluar | Net |, barang fisik dahulu, lalu jasa/non-stok di tabel terpisah atau baris yang ditandai "(jasa)". Sertakan juga total nilai masuk, keluar, dan saldo dalam Rupiah.
+  3. "## Insight Bisnis" berisi poin bernomor.
+  4. "## Rekomendasi" berisi poin singkat.
+  5. "## Catatan Data" berisi batasan data atau hal yang perlu dicek, dan diakhiri kalimat: "Angka perlu diverifikasi terhadap Laporan Mutasi sebelum dipakai untuk keputusan penting."
+- Untuk pertanyaan singkat yang bukan analisis (mis. sapaan, definisi), jawab ringkas tanpa struktur di atas.
+- Tabel markdown: baris header, baris separator (| --- | --- |), dan baris data ditulis berurutan TANPA baris kosong di antaranya; setiap baris tabel di baris tersendiri (jangan menyambung dengan "||"). Beri satu baris kosong sebelum dan sesudah tabel. Kolom angka boleh rata kanan (| ---: |).
+- Angka memakai format Indonesia: titik sebagai pemisah ribuan (68.403) dan "Rp 87.918.258" untuk rupiah. Satuan (pcs, unit, box, laporan) ditulis di kolom Satuan tersendiri, bukan digabung dengan angka.
 """
 
 TOOLS = [get_current_stock, get_financial_summary, get_item_mutations, get_database_schema, execute_sql_query]
@@ -204,7 +244,7 @@ def build_config(model_name: str) -> types.GenerateContentConfig:
         tools=TOOLS,  # SDK baru otomatis menjalankan fungsi Python (automatic function calling)
         automatic_function_calling=types.AutomaticFunctionCallingConfig(maximum_remote_calls=5),
         temperature=0.3,
-        max_output_tokens=2048,
+        max_output_tokens=4096,
     )
     # Kurangi "thinking" agar respons jauh lebih cepat & hemat token
     if model_name.startswith("gemini-2.5"):
@@ -246,13 +286,9 @@ def chat():
 
     if answer is None:
         answer = "Maaf, mesin AI gagal memproses permintaan atau menjalankan fungsi. Pastikan koneksi dan API stabil."
-    else:
-        # Sanitasi dan perbaiki jika ada baris tabel markdown yang tersambung dengan '||'
-        import re
-        if "||" in answer and "|" in answer:
-            answer = re.sub(r'\|\s*\|', '|\n|', answer)
-        answer = re.sub(r'([^\n])\n(\|.+?\|)', r'\1\n\n\2', answer)
-        
+    # Catatan: dulu ada regex yang menyisipkan baris kosong sebelum SETIAP baris tabel sehingga tabel
+    # pecah menjadi paragraf. Normalisasi markdown kini dilakukan di frontend (normalizeAiMarkdown).
+
     return jsonify({"answer": answer})
 
 if __name__ == '__main__':

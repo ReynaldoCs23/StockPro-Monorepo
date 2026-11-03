@@ -46,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // AI Chat Endpoint
     Route::post('/ask-ai', [AIChatController::class, 'ask']);
+    Route::post('/ai/export-pdf', [\App\Http\Controllers\AIExportController::class, 'exportPdf'])->middleware('throttle:20,1');
 
     // ==========================================
     // 1.5 COMPANY PROFILE & TRANSACTIONS

@@ -1,3 +1,5 @@
+import { normalizeAiMarkdown } from './aiMarkdown.js';
+
 // 1. Generate ID Otomatis (Contoh: BRG001, SUP002)
 export const generateId = (prefix, list, idKey) => {
     if (!list || list.length === 0) return `${prefix}001`;
@@ -127,19 +129,6 @@ export const formatLocalDate = (dateStr) => {
     return `${day}/${month}/${year}`;
 };
 
-// 8. Normalisasi Markdown AI (mengubah baris tabel '||' menjadi baris baru dan memastikan spacing)
-export const formatAIMarkdown = (text) => {
-    if (!text || typeof text !== 'string') return '';
-    let formatted = text;
-
-    // Normalisasi baris tabel yang tergabung dengan '||' menjadi '|\n|'
-    formatted = formatted.replace(/\|\s*\|/g, '|\n|');
-
-    // Beri baris kosong sebelum tabel jika didahului teks biasa
-    formatted = formatted.replace(/([^\n])\n(\|.+?\|)/g, '$1\n\n$2');
-
-    // Beri baris kosong setelah tabel jika diikuti teks biasa
-    formatted = formatted.replace(/(\|.+?\|)\n([^\n\|])/g, '$1\n\n$2');
-
-    return formatted;
-};
+// 8. Normalisasi Markdown AI — didelegasikan ke normalizeAiMarkdown (utils/aiMarkdown.js).
+// Versi lama menyisipkan baris kosong sebelum SETIAP baris tabel sehingga tabel pecah jadi paragraf.
+export const formatAIMarkdown = (text) => normalizeAiMarkdown(text);
