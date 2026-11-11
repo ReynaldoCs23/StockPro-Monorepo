@@ -312,6 +312,27 @@ class TransactionController extends Controller {
                 return $item;
             });
 
+            // DPP & PPN per baris (dipakai ekspor per item). Hanya dikirim bila header tersimpan sama dengan
+            // hasil aturan saat ini — transaksi lama (dihitung dengan aturan lama) tetap memakai alokasi proporsional.
+            if ($items->isNotEmpty() && InvoiceCalculator::PPN_PER_BARIS) {
+                $calc = $this->hitungNominal(
+                    $t->type,
+                    $items->map(fn ($i) => ['qty' => $i->jumlah_transaksi ?? $i->jumlah ?? 0, 'harga' => $i->harga_satuan ?? 0])->values()->all(),
+                    $t->potongan_harga ?? 0, $t->uang_muka ?? 0, $t->ppnbm ?? 0, $t->pajak_persen ?? 0,
+                    self::isDppNilaiLain($t->type, $t->idTransaksi)
+                );
+                $cocok = count($calc['lines_dpp']) === $items->count()
+                    && bccomp($calc['dpp'], InvoiceCalculator::money($t->dpp ?? 0), 2) === 0
+                    && bccomp($calc['ppn'], InvoiceCalculator::money($t->pajak_nominal ?? 0), 2) === 0;
+                if ($cocok) {
+                    $items = $items->values()->map(function ($item, $i) use ($calc) {
+                        $item->dpp_baris = $calc['lines_dpp'][$i];
+                        $item->ppn_baris = $calc['lines_ppn'][$i];
+                        return $item;
+                    });
+                }
+            }
+
             return [...(array)$t, 'items' => $items, 'subtotal_harga_jual' => $subtotalHargaJual, 'isi_transaksi_detail' => $isi_transaksi_detail, 'company_profile' => $companyProfile];
         });
 

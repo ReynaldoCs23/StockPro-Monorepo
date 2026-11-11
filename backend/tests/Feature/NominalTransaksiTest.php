@@ -87,6 +87,7 @@ class NominalTransaksiTest extends TestCase
         ]);
 
         $trx = DB::table('transactions')->where('idTransaksi', $id)->first();
+        // PPN dari total: 12% x 825.825 = 99.099,00
         $this->assertSame('825825.00', $trx->dpp);
         $this->assertSame('99099.00', $trx->pajak_nominal);
         $this->assertSame('999999.00', $trx->totalTransaksi);
@@ -97,6 +98,8 @@ class NominalTransaksiTest extends TestCase
         $this->assertNotNull($row, 'Transaksi harus muncul di API daftar transaksi');
         $this->assertSame('900900.00', $row['subtotal_harga_jual']);
         $this->assertEqualsCanonicalizing(['720720.00', '180180.00'], array_column($row['items'], 'subtotal_baris'));
+        // Mode PPN dari total: DPP/PPN per baris tidak dikirim; ekspor memakai alokasi proporsional dari header
+        $this->assertSame([], array_column($row['items'], 'ppn_baris'));
     }
 
     public function test_potongan_mengurangi_dpp_ppn_dan_total(): void

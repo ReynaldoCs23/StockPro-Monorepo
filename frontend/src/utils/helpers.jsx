@@ -91,8 +91,12 @@ export const flattenTransactionsForExport = (transactions = []) => {
         lines.forEach(({ item, qty, harga, total }, i) => {
             const isLast = i === lines.length - 1;
             const share = subtotal > 0 ? total / subtotal : 1 / lines.length;
-            const dpp = storedDpp > 0 ? (isLast ? sisaDpp : round2(storedDpp * share)) : total * 11 / 12;
-            const ppn = storedPpn > 0 ? (isLast ? sisaPpn : round2(storedPpn * share)) : dpp * 12 / 100 * (pajakPersen > 0 ? 1 : 0);
+            // Utamakan DPP/PPN per baris dari backend (aturan per baris, sama dengan faktur);
+            // alokasi proporsional hanya untuk transaksi lama yang tidak membawanya.
+            const dpp = item.dpp_baris !== undefined ? Number(item.dpp_baris)
+                : (storedDpp > 0 ? (isLast ? sisaDpp : round2(storedDpp * share)) : total * 11 / 12);
+            const ppn = item.ppn_baris !== undefined ? Number(item.ppn_baris)
+                : (storedPpn > 0 ? (isLast ? sisaPpn : round2(storedPpn * share)) : dpp * 12 / 100 * (pajakPersen > 0 ? 1 : 0));
             const disc = isLast ? sisaDisc : round2(discount * share);
             sisaDpp = round2(sisaDpp - (storedDpp > 0 ? dpp : 0));
             sisaPpn = round2(sisaPpn - (storedPpn > 0 ? ppn : 0));

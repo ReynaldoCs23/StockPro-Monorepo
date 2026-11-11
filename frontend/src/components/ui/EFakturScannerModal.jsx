@@ -81,6 +81,10 @@ const INDO_MONTHS = {
     jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
 };
 
+// PPN cadangan (bila PPN tidak terbaca dari faktur): 12% x DPP Nilai Lain, dibulatkan KE ATAS ke rupiah,
+// sama dengan aturan backend. Dihitung dalam sen bulat agar tidak terkena galat float (99.099,00 tetap 99.099).
+const ppnCadangan = (dpp) => Math.ceil((Math.round(Number(dpp || 0) * 100) * 12) / 10000);
+
 // Parsing angka faktur memakai parser bersama ("720.720,00" -> 720720)
 const parseIdrNum = (val) => {
     const n = parseNominal(val);
@@ -195,7 +199,7 @@ const parseFakturTextLines = (lines) => {
         if (mHargaJual) dpp = parseIdrNum(mHargaJual[1]);
     }
     if (ppn === 0 && dpp > 0) {
-        ppn = Math.round(dpp * 12 / 100); // PPN = 12% x DPP Nilai Lain, dibulatkan ke rupiah (hanya bila PPN tidak terbaca)
+        ppn = ppnCadangan(dpp); // hanya bila PPN tidak terbaca dari faktur
     }
 
     // 5. Tanggal Faktur
@@ -234,7 +238,7 @@ const parseFakturTextLines = (lines) => {
                     harga_satuan: totalItem,
                     total: totalItem,
                     dpp: totalItem,
-                    ppn: Math.round(totalItem * 12 / 100)
+                    ppn: ppnCadangan(totalItem)
                 });
             }
         }
