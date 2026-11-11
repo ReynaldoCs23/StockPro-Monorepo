@@ -123,7 +123,8 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
     const picPenerima = isPembelian ? MY_COMPANY.penanggung_jawab : entityData.penanggung_jawab;
 
     // Calculations
-    const hargaJualTotal = itemsList.reduce((sum, item) => sum + (Number(item.jumlah_transaksi || item.jumlah || 0) * Number(item.harga_satuan || item.harga_modal_satuan || 0)), 0);
+    // Harga jual (subtotal) dari backend; dihitung ulang hanya bila data lama tidak membawanya
+    const hargaJualTotal = data.subtotal_harga_jual !== undefined ? Number(data.subtotal_harga_jual) : itemsList.reduce((sum, item) => sum + (Number(item.jumlah_transaksi || item.jumlah || 0) * Number(item.harga_satuan || item.harga_modal_satuan || 0)), 0);
     const potonganHarga = Number(data.potongan_harga || 0);
     const uangMuka = Number(data.uang_muka || 0);
     const ppnbm = Number(data.ppnbm || 0);
@@ -218,7 +219,7 @@ export default function FakturPajak({ data, onClose, suppliers = [], customers =
                     <tbody>
                         {itemsList.map((item, idx) => {
                             const unitPrice = Number(item.harga_satuan ?? item.harga_modal_satuan ?? 0);
-                            const amount = Number(item.jumlah_transaksi || item.jumlah) * unitPrice;
+                            const amount = (item.subtotal_baris !== undefined ? Number(item.subtotal_baris) : Number(item.jumlah_transaksi || item.jumlah) * unitPrice);
                             return (
                                 <tr key={idx}>
                                     <td className="border border-black py-2 px-3 text-center">{idx + 1}</td>

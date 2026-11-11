@@ -11,6 +11,7 @@ use App\Events\StokUpdated;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Services\InvoiceCalculator;
 
 class MakloonService
 {
@@ -126,10 +127,12 @@ class MakloonService
 
         $hargaSatuan = $financial['harga_satuan'] ?? 0;
         $pajakPersen = $financial['pajak_persen'] ?? 0;
-        $pajakNominal = $financial['pajak_nominal'] ?? 0;
-        $totalTransaksi = $financial['total_transaksi'] ?? 0;
+        // Nominal dihitung di backend (InvoiceCalculator); pajak_nominal/total_transaksi kiriman frontend diabaikan.
+        $nominal = InvoiceCalculator::calculate([['qty' => $receivedQty, 'harga' => $hargaSatuan]], 0, 0, 0, $pajakPersen, true);
+        $pajakNominal = $nominal['ppn'];
+        $totalTransaksi = $nominal['total'];
 
-        return DB::transaction(function () use ($order, $receivedQty, $hargaSatuan, $pajakPersen, $pajakNominal, $totalTransaksi, $financial) {
+        return DB::transaction(function () use ($order, $receivedQty, $hargaSatuan, $pajakPersen, $pajakNominal, $totalTransaksi, $financial, $nominal) {
             $bom = Bom::where('kode_produk', $order->kode_produk)->with('details')->first();
             if (!$bom) {
                 throw new \Exception("Resep BOM tidak ditemukan untuk produk ini.");
@@ -174,8 +177,7 @@ class MakloonService
             // ==========================================
             // 2. Create MAKLOON_IN transaction
             // ==========================================
-            $subtotal_makloon = $hargaSatuan * $receivedQty;
-            $dpp_makloon = $subtotal_makloon * (11 / 12);
+            $dpp_makloon = $nominal['dpp'];
 
             $trxInId = $this->idGenerator->generateTransactionId('MAKLOON_IN');
             $transactionIn = Transaction::create([

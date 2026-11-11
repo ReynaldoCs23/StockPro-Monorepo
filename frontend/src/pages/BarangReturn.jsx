@@ -7,7 +7,8 @@ import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import { apiCall } from '../utils/api';
-import { generateId, getLocalYYYYMMDD, formatLocalDate } from '../utils/helpers';
+import { generateId, getLocalYYYYMMDD, formatLocalDate, formatRp } from '../utils/helpers';
+import NominalInput from '../components/ui/NominalInput';
 import useAppStore from '../store/useAppStore';
 
 export default function BarangReturn() {
@@ -361,7 +362,7 @@ export default function BarangReturn() {
             }
         },
         { key: 'keterangan', label: 'Keterangan' },
-        { key: 'totalTransaksi', label: 'Total Nilai', format: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0), exportFormat: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0) }
+        { key: 'totalTransaksi', label: 'Total Nilai', format: v => formatRp(v), exportFormat: v => formatRp(v) }
     ];
 
     const [fullPrintData, setFullPrintData] = useState(null);
@@ -604,15 +605,15 @@ export default function BarangReturn() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
-                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                                <NominalInput className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={v => setPotonganHarga(Number(v) || 0)} />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
-                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                                <NominalInput className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={v => setUangMuka(Number(v) || 0)} />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
-                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                                <NominalInput className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={v => setPpnbm(Number(v) || 0)} />
                             </div>
                         </div>
                     </div>
@@ -745,15 +746,15 @@ export default function BarangReturn() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
-                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                                <NominalInput className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={v => setPotonganHarga(Number(v) || 0)} />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
-                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                                <NominalInput className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={v => setUangMuka(Number(v) || 0)} />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
-                                <input type="number" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                                <NominalInput className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={v => setPpnbm(Number(v) || 0)} />
                             </div>
                         </div>
                     </div>

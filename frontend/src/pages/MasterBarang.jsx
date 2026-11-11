@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import { apiCall } from '../utils/api';
 import { generateId, formatRp } from '../utils/helpers';
+import NominalInput from '../components/ui/NominalInput';
 import useAppStore from '../store/useAppStore';
 
 export default function MasterBarang() {
@@ -285,11 +286,11 @@ export default function MasterBarang() {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium mb-1 text-slate-700">Harga Beli /{formData.satuan_dasar || 'Satuan'}</label>
-                            <input required type="number" className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.hargaBeli} onChange={e => setFormData({...formData, hargaBeli: e.target.value === '' ? '' : Number(e.target.value)})} />
+                            <NominalInput required className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.hargaBeli} onChange={v => setFormData({...formData, hargaBeli: v})} />
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1 text-slate-700">Harga Jual /{formData.satuan_dasar || 'Satuan'}</label>
-                            <input required type="number" className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none:border-blue-500:ring-blue-500" value={formData.hargaJual} onChange={e => setFormData({...formData, hargaJual: e.target.value === '' ? '' : Number(e.target.value)})} />
+                            <NominalInput required className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.hargaJual} onChange={v => setFormData({...formData, hargaJual: v})} />
                         </div>
                     </div>
 
@@ -299,11 +300,11 @@ export default function MasterBarang() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-sm font-medium mb-1 text-slate-700">Harga Beli /{formData.satuan_besar}</label>
-                                    <input type="number" className="w-full p-2.5 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" placeholder={`Opsional (default: ${formatRp((formData.hargaBeli || 0) * (formData.rasio_konversi || 1))})`} value={formData.hargaBeli_besar} onChange={e => setFormData({...formData, hargaBeli_besar: e.target.value === '' ? '' : Number(e.target.value)})} />
+                                    <NominalInput className="w-full p-2.5 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" placeholder={`Opsional (default: ${formatRp((formData.hargaBeli || 0) * (formData.rasio_konversi || 1))})`} value={formData.hargaBeli_besar} onChange={v => setFormData({...formData, hargaBeli_besar: v})} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1 text-slate-700">Harga Jual /{formData.satuan_besar}</label>
-                                    <input type="number" className="w-full p-2.5 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" placeholder={`Opsional (default: ${formatRp((formData.hargaJual || 0) * (formData.rasio_konversi || 1))})`} value={formData.hargaJual_besar} onChange={e => setFormData({...formData, hargaJual_besar: e.target.value === '' ? '' : Number(e.target.value)})} />
+                                    <NominalInput className="w-full p-2.5 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" placeholder={`Opsional (default: ${formatRp((formData.hargaJual || 0) * (formData.rasio_konversi || 1))})`} value={formData.hargaJual_besar} onChange={v => setFormData({...formData, hargaJual_besar: v})} />
                                 </div>
                             </div>
                             <p className="text-xs text-amber-600">ℹ️ Kosongkan jika harga grosir = harga satuan × rasio konversi</p>

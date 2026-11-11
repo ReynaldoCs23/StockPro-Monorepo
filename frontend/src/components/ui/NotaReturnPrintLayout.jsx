@@ -127,7 +127,7 @@ export default function NotaReturnPrintLayout({ data, onClose, currentUser, type
 
     // Calculate totals from items
     const itemsList = data.items && data.items.length > 0 ? data.items : [{ kodeBarang: data.kodeBarang, namaBarang: data.namaBarang, jumlah: data.jumlah, harga_satuan: data.harga_modal_satuan || 0 }];
-    const subtotal = showPriceColumn ? itemsList.reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_satuan || it.harga_modal_satuan || 0)), 0) : 0;
+    const subtotal = showPriceColumn ? (data.subtotal_harga_jual !== undefined ? Number(data.subtotal_harga_jual) : itemsList.reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_satuan || it.harga_modal_satuan || 0)), 0)) : 0;
     const potonganHarga = Number(data.potongan_harga || 0);
     const uangMuka = Number(data.uang_muka || 0);
     const ppnbm = Number(data.ppnbm || 0);
@@ -232,7 +232,7 @@ export default function NotaReturnPrintLayout({ data, onClose, currentUser, type
                             {itemsList.map((item, idx) => {
                                 // Fallback logic: Primary (originalTransaction detail price), Fallback (harga_satuan from return detail)
                                 const unitPrice = Number(item.original_harga_satuan ?? item.harga_satuan ?? 0);
-                                const amount = Number(item.jumlah) * unitPrice;
+                                const amount = (item.subtotal_baris !== undefined && item.original_harga_satuan === undefined) ? Number(item.subtotal_baris) : Number(item.jumlah) * unitPrice;
                                 return (
                                     <tr key={idx}>
                                         <td className="border border-black py-2 px-3 text-center">{idx + 1}</td>
@@ -350,7 +350,7 @@ export default function NotaReturnPrintLayout({ data, onClose, currentUser, type
                     <tbody>
                         {itemsList.map((item, idx) => {
                             const unitPrice = Number(item.harga_satuan || item.harga_modal_satuan || 0);
-                            const amount = Number(item.jumlah) * unitPrice;
+                            const amount = (item.subtotal_baris !== undefined ? Number(item.subtotal_baris) : Number(item.jumlah) * unitPrice);
                             return (
                                 <tr key={idx}>
                                     <td className="border border-black p-2 text-center">{idx + 1}</td>

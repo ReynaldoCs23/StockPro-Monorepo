@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { formatRp, parseNominal } from '../../utils/money';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { QrCode, Scan, X, Loader2, Camera, CameraOff, RefreshCw, Upload, FileText } from '../icons/Icons';
 
@@ -80,24 +81,10 @@ const INDO_MONTHS = {
     jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
 };
 
+// Parsing angka faktur memakai parser bersama ("720.720,00" -> 720720)
 const parseIdrNum = (val) => {
-    if (typeof val === 'number') return val;
-    if (!val) return 0;
-    const str = String(val).replace(/Rp\.?/gi, '').trim();
-    if (str.includes(',') && str.includes('.')) {
-        if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
-            return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
-        } else {
-            return parseFloat(str.replace(/,/g, '')) || 0;
-        }
-    } else if (str.includes(',')) {
-        const parts = str.split(',');
-        if (parts.length === 2 && parts[1].length <= 2) {
-            return parseFloat(parts[0].replace(/\./g, '') + '.' + parts[1]) || 0;
-        }
-        return parseFloat(str.replace(/,/g, '')) || 0;
-    }
-    return parseFloat(str) || 0;
+    const n = parseNominal(val);
+    return Number.isFinite(n) ? n : 0;
 };
 
 const parseIndoDate = (str) => {
@@ -208,7 +195,7 @@ const parseFakturTextLines = (lines) => {
         if (mHargaJual) dpp = parseIdrNum(mHargaJual[1]);
     }
     if (ppn === 0 && dpp > 0) {
-        ppn = Math.round(dpp * 0.11);
+        ppn = Math.round(dpp * 12 / 100); // PPN = 12% x DPP Nilai Lain, dibulatkan ke rupiah (hanya bila PPN tidak terbaca)
     }
 
     // 5. Tanggal Faktur
@@ -247,7 +234,7 @@ const parseFakturTextLines = (lines) => {
                     harga_satuan: totalItem,
                     total: totalItem,
                     dpp: totalItem,
-                    ppn: Math.round(totalItem * 0.11)
+                    ppn: Math.round(totalItem * 12 / 100)
                 });
             }
         }
@@ -562,7 +549,7 @@ export default function EFakturScannerModal({ isOpen, onClose, onScan, isProcess
             let displayLabel = '';
             if (isObj) {
                 if (scanResult.nomor_faktur) {
-                    displayLabel = `No. Faktur: ${scanResult.nomor_faktur} | Supplier: ${scanResult.nama || '-'} | DPP: ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(scanResult.dpp || 0)}`;
+                    displayLabel = `No. Faktur: ${scanResult.nomor_faktur} | Supplier: ${scanResult.nama || '-'} | DPP: ${formatRp(scanResult.dpp || 0)}`;
                 } else {
                     displayLabel = scanResult.qrUrl || 'Dokumen Faktur Pajak Berhasil Dibaca';
                 }

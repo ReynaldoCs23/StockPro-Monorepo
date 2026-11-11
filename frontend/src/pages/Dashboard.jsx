@@ -144,7 +144,7 @@ export default function Dashboard() {
         activeUsers,
     }), [itemStats, transactionStats, activeUsers]);
 
-    const formatFullIDR = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
+    const formatFullIDR = (value) => formatRp(value); // format faktur: Rp 1.588.799,00
 
     const renderTrendBadge = (percentage, type = 'revenue') => {
         const numVal = Number(percentage);
@@ -302,7 +302,7 @@ export default function Dashboard() {
                                 />
                                 <Tooltip
                                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', padding: '16px' }}
-                                    formatter={(value) => [new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value), undefined]}
+                                    formatter={(value) => [formatRp(value), undefined]}
                                     labelFormatter={(label, payload) => {
                                         if (payload && payload.length > 0 && payload[0].payload.Tanggal) {
                                             return new Date(payload[0].payload.Tanggal).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });

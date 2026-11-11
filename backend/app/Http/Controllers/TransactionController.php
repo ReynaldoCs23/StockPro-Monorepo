@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Traits\HasSystemLogs;
 use App\Events\StokUpdated;
+use App\Services\InvoiceCalculator;
 
 class TransactionController extends Controller {
     use HasSystemLogs;
@@ -256,20 +257,22 @@ class TransactionController extends Controller {
 
                         $refDetails = $allRefDetails->get($t->idReferensi, collect())->keyBy('kodeBarang');
                         
-                        $returnSubtotal = 0;
-                        $items = $items->map(function($item) use ($refDetails, &$returnSubtotal) {
+                        $returnLines = [];
+                        $items = $items->map(function($item) use ($refDetails, &$returnLines) {
                             if ($refDetails->has($item->kodeBarang)) {
                                 $item->harga_satuan = $refDetails->get($item->kodeBarang)->harga_satuan;
                             } else {
                                 $item->harga_satuan = $item->harga_satuan ?: ($item->hargaJual ?: ($item->hargaBeli ?: 0));
                             }
-                            $returnSubtotal += ($item->jumlah * $item->harga_satuan);
+                            $returnLines[] = ['qty' => $item->jumlah, 'harga' => $item->harga_satuan];
                             return $item;
                         });
 
-                        $t->returnSubtotal = $returnSubtotal;
-                        $t->returnTax = $returnSubtotal * ($t->pajak_persen / 100);
-                        $t->returnGrandTotal = $t->returnSubtotal + $t->returnTax;
+                        // Nominal retur dihitung dengan aturan yang sama seperti saat disimpan (InvoiceCalculator)
+                        $retNominal = InvoiceCalculator::calculate($returnLines, 0, 0, 0, $t->pajak_persen ?? 0, false);
+                        $t->returnSubtotal = $retNominal['subtotal'];
+                        $t->returnTax = $retNominal['ppn'];
+                        $t->returnGrandTotal = $retNominal['total'];
                     }
                 }
 
@@ -300,7 +303,16 @@ class TransactionController extends Controller {
                 return $nama . ' (' . $item->jumlah . ')';
             })->implode(', ');
 
-            return [...(array)$t, 'items' => $items, 'isi_transaksi_detail' => $isi_transaksi_detail, 'company_profile' => $companyProfile];
+            // Harga jual per baris & subtotal dari InvoiceCalculator (dibulatkan ke rupiah seperti faktur),
+            // agar dokumen cetak di frontend tidak menghitung ulang dengan float.
+            $subtotalHargaJual = '0.00';
+            $items = $items->map(function ($item) use (&$subtotalHargaJual) {
+                $item->subtotal_baris = InvoiceCalculator::lineTotal($item->jumlah_transaksi ?? $item->jumlah ?? 0, $item->harga_satuan ?? 0);
+                $subtotalHargaJual = InvoiceCalculator::money(bcadd($subtotalHargaJual, $item->subtotal_baris, 2));
+                return $item;
+            });
+
+            return [...(array)$t, 'items' => $items, 'subtotal_harga_jual' => $subtotalHargaJual, 'isi_transaksi_detail' => $isi_transaksi_detail, 'company_profile' => $companyProfile];
         });
 
         $response = $paginator->toArray();
@@ -714,31 +726,27 @@ class TransactionController extends Controller {
         }
         $execution_date = $isScheduled ? Carbon::parse($payload['tanggal'])->format('Y-m-d') : null;
 
-        // Calculate DPP if not provided
-        $subtotal_for_dpp = $payload['subtotal'] ?? 0;
-        if (empty($subtotal_for_dpp) && isset($payload['items'])) {
-            foreach ($payload['items'] as $it) {
-                $q = $it['jumlah_transaksi'] ?? $it['jumlah'] ?? 0;
-                $p = $it['harga_satuan'] ?? $it['hargaBeli'] ?? $it['hargaJual'] ?? $it['harga_modal_satuan'] ?? 0;
-                $subtotal_for_dpp += ($q * $p);
-            }
+        // Nominal (subtotal, DPP, PPN, total) SELALU dihitung di backend via InvoiceCalculator.
+        // Nilai totalTransaksi/dpp/pajak_nominal kiriman frontend diabaikan.
+        $potongan_harga = InvoiceCalculator::money($payload['potongan_harga'] ?? 0);
+        $uang_muka = InvoiceCalculator::money($payload['uang_muka'] ?? 0);
+        $ppnbm = InvoiceCalculator::money($payload['ppnbm'] ?? 0);
+
+        $dppNilaiLain = self::isDppNilaiLain($type, $payload['idTransaksi'] ?? '');
+        $pajakPersenHeader = $payload['pajak_persen'] ?? 0;
+
+        // Perkiraan awal dari item payload (harga sama dengan yang disimpan di detail, kecuali retur).
+        // Dipakai juga oleh perhitungan harga acuan Makloon di dalam loop.
+        $initialLines = [];
+        foreach ($payload['items'] ?? [] as $it) {
+            $initialLines[] = [
+                'qty' => intval($it['jumlah_transaksi'] ?? $it['jumlah'] ?? 0),
+                'harga' => InvoiceCalculator::money($it['harga_modal_satuan'] ?? ($it['harga_satuan'] ?? 0)),
+            ];
         }
-        
-        $potongan_harga = $payload['potongan_harga'] ?? 0;
-        $uang_muka = $payload['uang_muka'] ?? 0;
-        $ppnbm = $payload['ppnbm'] ?? 0;
-        $dpp = $payload['dpp'] ?? 0;
-        
-        $base_subtotal = max(0, $subtotal_for_dpp - $potongan_harga - $uang_muka);
-        $isOutboundPenjualan = ($type === 'OUT' && !str_starts_with($payload['idTransaksi'] ?? '', 'MKL-OUT'));
-        if ($type === 'IN' || $type === 'MAKLOON_IN' || $isOutboundPenjualan) {
-            // Untuk barang masuk dan penjualan keluar, DPP dihitung: (Subtotal - Potongan - Uang Muka) * 11 / 12
-            if (empty($dpp) || $dpp == 0 || abs((float)$dpp - (float)$subtotal_for_dpp) < 0.01) {
-                $dpp = round($base_subtotal * 11 / 12, 2);
-            }
-        } elseif (empty($dpp) || $dpp == 0) {
-            $dpp = $base_subtotal;
-        }
+        $nominal = $this->hitungNominal($type, $initialLines, $potongan_harga, $uang_muka, $ppnbm, $pajakPersenHeader, $dppNilaiLain);
+        $payload['pajak_nominal'] = $nominal['ppn'];
+        $dpp = $nominal['dpp'];
 
         // 1. Simpan Header ke tabel transactions
         DB::table('transactions')->insert([
@@ -749,13 +757,13 @@ class TransactionController extends Controller {
             'tanggal' => $payload['tanggal'],
             'sumber_tujuan' => $jenisReturnOrTujuan,
             'entitas' => $payload['namaSupplier'] ?? ($payload['namaPembeli'] ?? null),
-            'totalTransaksi' => $payload['totalTransaksi'] ?? 0,
+            'totalTransaksi' => $nominal['total'],
             'potongan_harga' => $potongan_harga,
             'uang_muka' => $uang_muka,
             'dpp' => $dpp,
-            'ppnbm' => $ppnbm,
-            'pajak_persen' => $payload['pajak_persen'] ?? 0,
-            'pajak_nominal' => $payload['pajak_nominal'] ?? 0,
+            'ppnbm' => $nominal['ppnbm'],
+            'pajak_persen' => $pajakPersenHeader,
+            'pajak_nominal' => $nominal['ppn'],
             'idReferensi' => !empty($payload['idReferensi']) ? $payload['idReferensi'] : null,
             'no_faktur' => $payload['no_faktur'] ?? null,
             'target_kode_barang' => $payload['target_kode_barang'] ?? null,
@@ -765,7 +773,7 @@ class TransactionController extends Controller {
         ]);
 
         // 2. Simpan Detail
-        $calculatedSubtotal = 0;
+        $storedLines = []; // qty x harga yang benar-benar disimpan, sumber perhitungan nominal final
 
         foreach ($payload['items'] as $index => $item) {
             // TASK 3: Server-side UoM enforcement — recalculate real_qty from jumlah_transaksi
@@ -833,7 +841,9 @@ class TransactionController extends Controller {
                 }
             }
 
-            $calculatedSubtotal += ($jumlahTransaksi * $hargaSatuan);
+            // Harga disimpan di DECIMAL(18,2): normalisasi dulu agar qty x harga tersimpan == dasar perhitungan
+            $hargaSatuan = InvoiceCalculator::money($hargaSatuan);
+            $storedLines[] = ['qty' => $jumlahTransaksi, 'harga' => $hargaSatuan];
 
             DB::table('transaction_details')->insert([
                 'idTransaksi' => $payload['idTransaksi'],
@@ -963,30 +973,86 @@ class TransactionController extends Controller {
             }
         }
 
-        // Calculate taxes and grand total for ALL Returns as the absolute source of truth
+        // 3. Nominal final dari harga yang benar-benar disimpan (retur bisa mengganti harga di loop)
+        $pajakPersenFinal = $pajakPersenHeader;
         if ($type === 'RET') {
-            $pajakPersen = 11; // Default PPN
+            $pajakPersenFinal = 11; // Default PPN retur (aturan lama)
             if (!empty($payload['idReferensi'])) {
                 $originalTx = DB::table('transactions')->where('idTransaksi', $payload['idReferensi'])->first();
                 if ($originalTx && floatval($originalTx->pajak_persen) > 0) {
-                    $pajakPersen = floatval($originalTx->pajak_persen);
+                    $pajakPersenFinal = $originalTx->pajak_persen;
                 }
             } elseif (isset($payload['pajak_persen']) && floatval($payload['pajak_persen']) > 0) {
-                $pajakPersen = floatval($payload['pajak_persen']);
+                $pajakPersenFinal = $payload['pajak_persen'];
             }
-
-            $pajakNominal = $calculatedSubtotal * ($pajakPersen / 100);
-            $totalTransaksi = $calculatedSubtotal + $pajakNominal;
-
-            DB::table('transactions')
-                ->where('idTransaksi', $payload['idTransaksi'])
-                ->update([
-                    'pajak_persen' => $pajakPersen,
-                    'pajak_nominal' => $pajakNominal,
-                    'totalTransaksi' => $totalTransaksi,
-                ]);
         }
+
+        $final = $this->hitungNominal($type, $storedLines, $potongan_harga, $uang_muka, $ppnbm, $pajakPersenFinal, $dppNilaiLain);
+        DB::table('transactions')
+            ->where('idTransaksi', $payload['idTransaksi'])
+            ->update([
+                'pajak_persen' => $pajakPersenFinal,
+                'dpp' => $final['dpp'],
+                'pajak_nominal' => $final['ppn'],
+                'ppnbm' => $final['ppnbm'],
+                'totalTransaksi' => $final['total'],
+            ]);
         });
+    }
+
+    /** DPP Nilai Lain 11/12 berlaku untuk barang masuk, makloon masuk, dan penjualan keluar (aturan lama dipertahankan). */
+    public static function isDppNilaiLain(string $type, string $idTransaksi): bool
+    {
+        $isOutboundPenjualan = ($type === 'OUT' && !str_starts_with($idTransaksi, 'MKL-OUT'));
+        return $type === 'IN' || $type === 'MAKLOON_IN' || $isOutboundPenjualan;
+    }
+
+    /**
+     * POST /api/transactions/hitung-nominal — pratinjau nominal untuk form (frontend tidak menghitung sendiri).
+     * Memakai aturan yang sama persis dengan applyTransaction.
+     */
+    public function hitungNominalPreview(Request $request)
+    {
+        $data = $request->validate([
+            'jenis' => 'required|in:IN,OUT,MAKLOON_IN,MAKLOON_OUT,RET',
+            'is_makloon' => 'nullable|boolean',
+            'items' => 'present|array|max:500',
+            'items.*.qty' => 'nullable|numeric|min:0',
+            'items.*.harga' => 'nullable|numeric|min:0',
+            'potongan_harga' => 'nullable|numeric|min:0',
+            'uang_muka' => 'nullable|numeric|min:0',
+            'ppnbm' => 'nullable|numeric|min:0',
+            'pajak_persen' => 'nullable|numeric|min:0|max:100',
+        ]);
+
+        $type = $data['jenis'];
+        $idPrefix = ($type === 'OUT' && !empty($data['is_makloon'])) ? 'MKL-OUT' : '';
+        $lines = array_map(fn ($it) => [
+            'qty' => intval($it['qty'] ?? 0), // sama dengan saat disimpan (jumlah_transaksi di-intval)
+            'harga' => InvoiceCalculator::money($it['harga'] ?? 0),
+        ], $data['items']);
+
+        return response()->json($this->hitungNominal(
+            $type, $lines,
+            $data['potongan_harga'] ?? 0, $data['uang_muka'] ?? 0, $data['ppnbm'] ?? 0,
+            $data['pajak_persen'] ?? 0, self::isDppNilaiLain($type, $idPrefix)
+        ));
+    }
+
+    /**
+     * Hitung nominal transaksi lewat InvoiceCalculator (bcmath, dibulatkan ke rupiah seperti faktur).
+     * Retur mempertahankan aturan lama: potongan/uang muka/PPnBM tidak ikut, DPP = subtotal.
+     */
+    private function hitungNominal(string $type, array $lines, $potongan, $uangMuka, $ppnbm, $pajakPersen, bool $dppNilaiLain): array
+    {
+        if ($type === 'RET') {
+            return InvoiceCalculator::calculate($lines, 0, 0, 0, $pajakPersen, false);
+        }
+        if ($type === 'OUT' && !$dppNilaiLain) {
+            // Kirim ke Vendor Makloon (MKL-OUT) bukan penjualan: nominal header tetap 0 (aturan lama)
+            return InvoiceCalculator::calculate([], 0, 0, 0, 0, false);
+        }
+        return InvoiceCalculator::calculate($lines, $potongan, $uangMuka, $ppnbm, $pajakPersen, $dppNilaiLain);
     }
 
     public function fifoTrace($id)

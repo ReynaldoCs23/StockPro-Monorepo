@@ -1,4 +1,5 @@
 import { normalizeAiMarkdown } from './aiMarkdown.js';
+import { formatRp as formatRpShared } from './money.js';
 
 // 1. Generate ID Otomatis (Contoh: BRG001, SUP002)
 export const generateId = (prefix, list, idKey) => {
@@ -11,12 +12,8 @@ export const generateId = (prefix, list, idKey) => {
     return `${prefix}${(maxId + 1).toString().padStart(3, '0')}`;
 };
 
-// 2. Format Mata Uang Rupiah
-export const formatRp = (angka) => new Intl.NumberFormat('id-ID', { 
-    style: 'currency', 
-    currency: 'IDR', 
-    minimumFractionDigits: 0 
-}).format(angka || 0);
+// 2. Format Mata Uang Rupiah — memakai formatter bersama (utils/money.js): "Rp 720.720,00"
+export { formatRp, formatRupiah, parseNominal } from './money.js';
 
 // 3. Format Sumbu Y Grafik (Contoh: 1.000.000 -> 1M)
 export const formatYAxis = (val) => {
@@ -51,10 +48,7 @@ export const exportToCSV = (data, filename) => {
 
 // 5b. Format Rupiah untuk Export CSV (maks 2 desimal, contoh: "Rp 1.965.405,60")
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-export const formatRpExport = (angka) => 'Rp ' + new Intl.NumberFormat('id-ID', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-}).format(round2(angka));
+export const formatRpExport = (angka) => formatRpShared(angka); // sama dengan tampilan: Rp 1.588.799,00
 
 // 5b-2. Format angka biasa untuk Export CSV agar terbaca sebagai ANGKA di Excel locale Indonesia
 //       (tanpa pemisah ribuan, desimal pakai koma, maks 2 desimal). Contoh: 1965405.5999 -> "1965405,6"
@@ -81,7 +75,9 @@ export const flattenTransactionsForExport = (transactions = []) => {
         const lines = items.map(item => {
             const qty = Number(item.jumlah_transaksi ?? item.jumlah) || 0;
             const harga = Number(item.harga_satuan) || 0;
-            return { item, qty, harga, total: round2(qty * harga) };
+            // harga jual per baris dari backend (dibulatkan ke rupiah seperti faktur); fallback untuk data tanpa nilai server
+            const total = item.subtotal_baris !== undefined ? Number(item.subtotal_baris) : round2(qty * harga);
+            return { item, qty, harga, total };
         });
         const subtotal = lines.reduce((s, l) => s + l.total, 0);
         const discount = Number(trx.potongan_harga) || 0;
@@ -89,10 +85,18 @@ export const flattenTransactionsForExport = (transactions = []) => {
         const storedDpp = Number(trx.dpp) || 0;
         const storedPpn = Number(trx.pajak_nominal) || 0;
 
-        lines.forEach(({ item, qty, harga, total }) => {
+        // Alokasi proporsional header ke baris; sisa pembulatan diletakkan di baris terakhir
+        // agar jumlah DPP/PPN/discount per baris SAMA PERSIS dengan nilai header.
+        let sisaDpp = storedDpp, sisaPpn = storedPpn, sisaDisc = discount;
+        lines.forEach(({ item, qty, harga, total }, i) => {
+            const isLast = i === lines.length - 1;
             const share = subtotal > 0 ? total / subtotal : 1 / lines.length;
-            const dpp = storedDpp > 0 ? storedDpp * share : total * 11 / 12;
-            const ppn = storedPpn > 0 ? storedPpn * share : dpp * 12 / 100 * (pajakPersen > 0 ? 1 : 0);
+            const dpp = storedDpp > 0 ? (isLast ? sisaDpp : round2(storedDpp * share)) : total * 11 / 12;
+            const ppn = storedPpn > 0 ? (isLast ? sisaPpn : round2(storedPpn * share)) : dpp * 12 / 100 * (pajakPersen > 0 ? 1 : 0);
+            const disc = isLast ? sisaDisc : round2(discount * share);
+            sisaDpp = round2(sisaDpp - (storedDpp > 0 ? dpp : 0));
+            sisaPpn = round2(sisaPpn - (storedPpn > 0 ? ppn : 0));
+            sisaDisc = round2(sisaDisc - disc);
             rows.push({
                 ...trx,
                 _itemName: item.namaBarang || item.item_nama || '-',
@@ -100,7 +104,7 @@ export const flattenTransactionsForExport = (transactions = []) => {
                 _itemQty: qty,
                 _itemSatuan: item.satuan_transaksi || '-',
                 _itemTotal: total,
-                _itemDiscount: round2(discount * share),
+                _itemDiscount: round2(disc),
                 _itemHargaJual: total,
                 _itemDpp: round2(dpp),
                 _itemPpn: round2(ppn)

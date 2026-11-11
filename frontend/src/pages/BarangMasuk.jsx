@@ -8,6 +8,8 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import FakturPajak from '../components/ui/FakturPajak';
 import ReportPrintTemplate from '../components/ui/ReportPrintTemplate';
 import EFakturScannerModal from '../components/ui/EFakturScannerModal';
+import NominalInput from '../components/ui/NominalInput';
+import useNominalPreview from '../utils/useNominalPreview';
 import { apiCall } from '../utils/api';
 import { generateId, getLocalYYYYMMDD, formatRp, formatLocalDate, formatAngkaExport, flattenTransactionsForExport } from '../utils/helpers';
 import useAppStore from '../store/useAppStore';
@@ -49,6 +51,14 @@ export default function BarangMasuk() {
     const [potonganHarga, setPotonganHarga] = useState(0);
     const [uangMuka, setUangMuka] = useState(0);
     const [ppnbm, setPpnbm] = useState(0);
+
+    // Nominal (per baris, subtotal, DPP, PPN, total) dihitung BACKEND — frontend hanya menampilkan
+    const { nominal: previewNominal, error: previewError } = useNominalPreview({
+        jenis: 'IN',
+        items: cartItems.map(c => ({ qty: c.kodeBarang ? c.jumlah : 0, harga: c.harga_modal_satuan })),
+        potongan: potonganHarga, uangMuka, ppnbm, pajakPersen,
+        enabled: !isApiOffline,
+    });
     const [makloonRefs, setMakloonRefs] = useState([]);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
@@ -423,25 +433,18 @@ export default function BarangMasuk() {
         const idPrefix = isMakloon ? 'MKL-IN' : 'INV-IN';
         const finalId = editId || generateId(idPrefix, inbound, 'idTransaksi');
 
-        const subtotalCalc = validItems.reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
-        const subtotalDasar = Math.max(0, subtotalCalc - Number(potonganHarga || 0) - Number(uangMuka || 0));
-        const dppCalc = Math.round(subtotalDasar * 11 / 12 * 100) / 100;
-        const pajakNominalCalc = subtotalCalc * (pajakPersen / 100);
-
+        // DPP, PPN, dan total TIDAK dihitung di frontend; backend menghitung saat menyimpan.
         const payload = {
             idTransaksi: finalId,
             ...formData,
             pajak_persen: pajakPersen,
-            pajak_nominal: pajakNominalCalc,
             potongan_harga: potonganHarga,
             uang_muka: uangMuka,
             ppnbm: ppnbm,
-            dpp: dppCalc,
-            totalTransaksi: subtotalCalc + pajakNominalCalc,
             items: validItems.map(item => ({
                 ...item,
                 namaBarang: items.find(i => i.kodeBarang === item.kodeBarang)?.nama || '',
-                harga_modal_satuan: parseFloat(Number(item.harga_modal_satuan || 0).toFixed(2)),
+                harga_modal_satuan: Number(item.harga_modal_satuan || 0),
                 jumlah_transaksi: Number(item.jumlah),
                 satuan_transaksi: item.satuan_transaksi || items.find(i => i.kodeBarang === item.kodeBarang)?.satuan_dasar || '',
                 jumlah: getActualBaseQty(item)
@@ -460,6 +463,8 @@ export default function BarangMasuk() {
             // Format agar DataTable tetap bisa membaca summary-nya saat OFFLINE
             const summaryPayload = {
                 ...payload,
+                // mode offline: tampilkan nominal pratinjau terakhir dari backend (bila ada)
+                dpp: previewNominal?.dpp, pajak_nominal: previewNominal?.ppn, totalTransaksi: previewNominal?.total,
                 jumlah: validItems.reduce((sum, item) => sum + getActualBaseQty(item), 0),
                 namaBarang: `${validItems.length} Jenis Barang`
             };
@@ -558,7 +563,7 @@ export default function BarangMasuk() {
         ), exportFormat: (v, row) => row.isi_transaksi_detail || '-' },
         { key: 'jumlah', label: 'Total Qty', format: (v, row) => <span className="text-emerald-600 font-bold">+{row.jumlah || (row.items ? row.items.reduce((sum, item) => sum + Number(item.jumlah), 0) : 0)}</span>, exportFormat: (v, row) => row.jumlah || (row.items ? row.items.reduce((sum, item) => sum + Number(item.jumlah), 0) : 0) },
         { key: 'keterangan', label: 'Keterangan' },
-        { key: 'totalTransaksi', label: 'Total Nilai', format: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0), exportFormat: v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0) }
+        { key: 'totalTransaksi', label: 'Total Nilai', format: v => formatRp(v), exportFormat: v => formatRp(v) }
     ];
 
     const [fullPrintData, setFullPrintData] = useState(null);
@@ -777,7 +782,7 @@ export default function BarangMasuk() {
                                 {cartItems.map((item, idx) => {
                                     const selectedItem = items.find(i => i.kodeBarang === item.kodeBarang);
                                     const satuanOptions = selectedItem ? [...new Set([selectedItem.satuan_dasar, selectedItem.satuan_besar].filter(Boolean))] : [];
-                                    const lineSubtotal = Number(item.jumlah) * Number(item.harga_modal_satuan || 0);
+                                    const lineSubtotal = Number(previewNominal?.lines?.[idx] || 0);
                                     return (
                                     <div key={idx} className="flex gap-2 items-center flex-wrap">
                                         <select required className="flex-1 min-w-[180px] p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.kodeBarang} onChange={e => handleRowChange(idx, 'kodeBarang', e.target.value)}>
@@ -788,7 +793,7 @@ export default function BarangMasuk() {
                                         <select className="w-20 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.satuan_transaksi} onChange={e => handleRowChange(idx, 'satuan_transaksi', e.target.value)}>
                                             {satuanOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                         </select>
-                                        <input type="number" step="any" required placeholder="Hrg Modal" className="w-28 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.harga_modal_satuan} onChange={e => handleRowChange(idx, 'harga_modal_satuan', e.target.value)} disabled={formData.sumber === 'Penggantian Retur Vendor'} />
+                                        <NominalInput required placeholder="Hrg Modal" className="w-28 p-2 border rounded-lg text-sm text-right" value={item.harga_modal_satuan} onChange={v => handleRowChange(idx, 'harga_modal_satuan', v)} disabled={formData.sumber === 'Penggantian Retur Vendor'} />
                                         <input type="text" readOnly className="w-24 p-2 border rounded-lg text-sm bg-slate-100 text-slate-600:border-blue-500:ring-blue-500" value={item.lokasi_asal || 'Asal...'} title="Otomatis dari Supplier" />
                                         <select required className="w-28 p-2 border rounded-lg text-sm:border-blue-500:ring-blue-500" value={item.lokasi_tujuan} onChange={e => handleRowChange(idx, 'lokasi_tujuan', e.target.value)}>
                                             <option value="">Lok. Tujuan...</option>
@@ -809,37 +814,36 @@ export default function BarangMasuk() {
                     </div>
 
                     {(() => {
-                        const subtotal = cartItems.filter(c => c.kodeBarang && c.jumlah > 0).reduce((sum, it) => sum + (Number(it.jumlah) * Number(it.harga_modal_satuan || 0)), 0);
-                        const taxNominal = subtotal * (pajakPersen / 100);
-                        const subtotalDasar = Math.max(0, subtotal - Number(potonganHarga || 0) - Number(uangMuka || 0));
-                        const dppVisual = Math.round(subtotalDasar * 11 / 12 * 100) / 100;
+                        // Semua nilai dari backend (POST /transactions/hitung-nominal)
+                        const pending = previewError ? 'Gagal menghitung' : '...';
+                        const show = (v) => previewNominal ? formatRp(v) : pending;
                         return (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Potongan Harga (Rp)</label>
-                                        <input type="number" step="any" className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={e => setPotonganHarga(Number(e.target.value) || 0)} />
+                                        <NominalInput className="w-full p-2 border rounded-lg text-sm" value={potonganHarga} onChange={v => setPotonganHarga(Number(v) || 0)} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Uang Muka (Rp)</label>
-                                        <input type="number" step="any" className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={e => setUangMuka(Number(e.target.value) || 0)} />
+                                        <NominalInput className="w-full p-2 border rounded-lg text-sm" value={uangMuka} onChange={v => setUangMuka(Number(v) || 0)} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Jumlah PPnBM (Rp)</label>
-                                        <input type="number" step="any" className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={e => setPpnbm(Number(e.target.value) || 0)} />
+                                        <NominalInput className="w-full p-2 border rounded-lg text-sm" value={ppnbm} onChange={v => setPpnbm(Number(v) || 0)} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Dasar Pengenaan Pajak (DPP)</label>
-                                        <input type="text" readOnly className="w-full p-2 border border-slate-200 bg-slate-100 rounded-lg text-sm font-semibold text-slate-600" value={formatRp(dppVisual)} title="Subtotal Dasar" />
+                                        <input type="text" readOnly className="w-full p-2 border border-slate-200 bg-slate-100 rounded-lg text-sm font-semibold text-slate-600" value={show(previewNominal?.dpp)} title="DPP Nilai Lain (dihitung server)" />
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <label className="text-sm font-medium text-slate-700 whitespace-nowrap">Pajak / PPN (%)</label>
                                     <input type="number" step="any" min="0" max="100" className="w-24 p-2 border rounded-lg text-sm text-center font-bold:border-blue-500:ring-blue-500" value={pajakPersen} onChange={e => setPajakPersen(Number(e.target.value) || 0)} />
                                 </div>
-                                <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-bold">{formatRp(subtotal)}</span></div>
-                                <div className="flex justify-between text-sm"><span className="text-slate-500">PPN ({pajakPersen}%)</span><span className="font-bold text-amber-600">{formatRp(taxNominal)}</span></div>
-                                <div className="flex justify-between text-base border-t pt-2"><span className="font-bold text-slate-700">Grand Total</span><span className="font-black text-blue-700">{formatRp(subtotal + taxNominal)}</span></div>
+                                <div className="flex justify-between text-sm"><span className="text-slate-500">Subtotal</span><span className="font-bold">{show(previewNominal?.subtotal)}</span></div>
+                                <div className="flex justify-between text-sm"><span className="text-slate-500">PPN ({pajakPersen}%)</span><span className="font-bold text-amber-600">{show(previewNominal?.ppn)}</span></div>
+                                <div className="flex justify-between text-base border-t pt-2"><span className="font-bold text-slate-700">Grand Total</span><span className="font-black text-blue-700">{show(previewNominal?.total)}</span></div>
                             </div>
                         );
                     })()}

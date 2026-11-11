@@ -4,13 +4,12 @@ import { Calendar, Download, FileText } from '../components/icons/Icons';
 import html2pdf from 'html2pdf.js';
 import useAppStore from '../store/useAppStore';
 import toast from 'react-hot-toast';
+import { formatRp } from '../utils/money';
 
 // ---------------------------------------------------------------------------
 // Format helpers (semua nilai berasal dari API; tidak ada angka hardcode)
 // ---------------------------------------------------------------------------
-const formatRp = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value || 0);
-const formatRpDec = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value || 0)
-    .replace(/,(\d)$/, ',$10'); // 442,5 -> 442,50
+const formatRpDec = formatRp; // format nominal tunggal: Rp 442,50
 const fmtNum = (n) => Number(n || 0).toLocaleString('id-ID');
 const unit = (s) => (s || '').toLowerCase();
 // Waktu cetak selalu dalam zona backend (Asia/Makassar = WITA), tidak bergantung zona perangkat

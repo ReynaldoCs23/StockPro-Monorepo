@@ -4,7 +4,9 @@ import Modal from '../components/ui/Modal';
 import Toast from '../components/ui/Toast';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import { apiCall } from '../utils/api';
-import { generateId, getLocalYYYYMMDD } from '../utils/helpers';
+import { generateId, getLocalYYYYMMDD, formatRp } from '../utils/helpers';
+import NominalInput from '../components/ui/NominalInput';
+import useNominalPreview from '../utils/useNominalPreview';
 import useAppStore from '../store/useAppStore';
 
 export default function Makloon() {
@@ -46,6 +48,15 @@ export default function Makloon() {
     const [receiveQty, setReceiveQty] = useState('');
     const [makloonFee, setMakloonFee] = useState('');
     const [taxPercent, setTaxPercent] = useState(11);
+
+    // Pratinjau nominal penerimaan makloon dihitung BACKEND (aturan sama dengan saat disimpan)
+    const { nominal: receiveNominal, error: receiveNominalError } = useNominalPreview({
+        jenis: 'MAKLOON_IN',
+        items: [{ qty: receiveQty, harga: makloonFee }],
+        pajakPersen: taxPercent,
+        enabled: showReceiveModal && !isApiOffline,
+    });
+    const showReceive = (v) => receiveNominal ? formatRp(v) : (receiveNominalError ? 'Gagal menghitung' : '...');
     const [receiveLokasi, setReceiveLokasi] = useState('');
     const [sendConfirmId, setSendConfirmId] = useState(null);
     const [approvalPrompt, setApprovalPrompt] = useState(null); // { idTransaksi, type }
@@ -246,10 +257,6 @@ export default function Makloon() {
             setToast({ message: 'Harap pilih lokasi rak!', type: 'error' });
             return;
         }
-        const subtotal = qty * fee;
-        const pajakNominal = Math.round(subtotal * (tax / 100));
-        const totalTransaksi = subtotal + pajakNominal;
-
         setErrorMsg(''); setSuccessMsg('');
         setIsProcessing(true);
         setShowReceiveModal(false);
@@ -258,9 +265,7 @@ export default function Makloon() {
                 const response = await apiCall(`/makloon-orders/${receiveOrderId}/receive`, 'POST', {
                     received_qty: qty,
                     harga_satuan: fee,
-                    pajak_persen: tax,
-                    pajak_nominal: pajakNominal,
-                    total_transaksi: totalTransaksi,
+                    pajak_persen: tax, // PPN & total dihitung backend
                     lokasi_tujuan: receiveLokasi
                 });
                 await fetchOrders();
@@ -592,14 +597,12 @@ export default function Makloon() {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Biaya Jasa Makloon / Pcs</label>
-                            <input 
-                                type="number" 
-                                min="0" 
-                                required 
-                                placeholder="Rp 0"
-                                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none font-bold text-blue-700:border-blue-500:ring-blue-500" 
-                                value={makloonFee} 
-                                onChange={e => setMakloonFee(e.target.value)} 
+                            <NominalInput
+                                required
+                                placeholder="0,00"
+                                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none font-bold text-blue-700"
+                                value={makloonFee}
+                                onChange={v => setMakloonFee(v)}
                             />
                         </div>
                         <div>
@@ -617,15 +620,15 @@ export default function Makloon() {
                     <div className="mb-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
                         <div className="flex justify-between text-sm text-slate-600 mb-1">
                             <span>Subtotal</span>
-                            <span>Rp {((Number(receiveQty) || 0) * (Number(makloonFee) || 0)).toLocaleString('id-ID')}</span>
+                            <span>{showReceive(receiveNominal?.subtotal)}</span>
                         </div>
                         <div className="flex justify-between text-sm text-slate-600 mb-2">
                             <span>PPN ({taxPercent || 0}%)</span>
-                            <span>Rp {Math.round((Number(receiveQty) || 0) * (Number(makloonFee) || 0) * ((Number(taxPercent) || 0) / 100)).toLocaleString('id-ID')}</span>
+                            <span>{showReceive(receiveNominal?.ppn)}</span>
                         </div>
                         <div className="flex justify-between font-bold text-slate-800 border-t border-slate-200 pt-2">
                             <span>Total Estimasi</span>
-                            <span className="text-emerald-700">Rp {Math.round((Number(receiveQty) || 0) * (Number(makloonFee) || 0) * (1 + (Number(taxPercent) || 0) / 100)).toLocaleString('id-ID')}</span>
+                            <span className="text-emerald-700">{showReceive(receiveNominal?.total)}</span>
                         </div>
                     </div>
                     <div className="flex gap-3 justify-end mt-6">

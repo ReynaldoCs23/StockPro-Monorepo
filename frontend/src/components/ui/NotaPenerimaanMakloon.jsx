@@ -64,7 +64,7 @@ export default function NotaPenerimaanMakloon({ data, onClose }) {
                                     <td className="py-2">{item.namaBarang}</td>
                                     <td className="py-2 text-center">{qty}</td>
                                     <td className="py-2 text-right">{formatRp(harga)}</td>
-                                    <td className="py-2 text-right">{formatRp(qty * harga)}</td>
+                                    <td className="py-2 text-right">{formatRp(item.subtotal_baris !== undefined ? item.subtotal_baris : qty * harga)}</td>
                                 </tr>
                             );
                         })}

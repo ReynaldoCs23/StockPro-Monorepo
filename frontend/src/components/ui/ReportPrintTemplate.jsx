@@ -1,5 +1,6 @@
 import React from 'react';
 import useAppStore from '../../store/useAppStore';
+import { formatRp } from '../../utils/money';
 
 const ReportPrintTemplate = ({ title, type, columns, data, dateRange }) => {
     const { companyProfile, currentUser } = useAppStore();
@@ -16,7 +17,6 @@ const ReportPrintTemplate = ({ title, type, columns, data, dateRange }) => {
         ? data.reduce((sum, item) => sum + (Number(item.totalTransaksi) || Number(item.total_nilai) || Number(item.total_jumlah) || (Number(item.qty) * Number(item.harga)) || 0), 0)
         : 0;
 
-    const formatRp = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
 
     // Derive form number based on title
     let formNumber = 'FM-WH-ALL-' + new Date().getFullYear() + '-09';
