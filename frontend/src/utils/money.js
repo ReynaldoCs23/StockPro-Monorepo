@@ -23,6 +23,56 @@ export const formatRp = (value) => {
 };
 
 /**
+ * Format kolom input nominal SAAT DIKETIK: selalu tampil "720.720,00" dan posisi kursor dijaga.
+ * Saat mengetik, titik = pemisah ribuan dan koma = desimal (maks 2 digit). Tempelan (paste) memakai parseNominal.
+ * @param {string} raw      isi input setelah diketik
+ * @param {number} caret    posisi kursor di raw
+ * @param {string} prevText isi input sebelumnya (untuk mendeteksi koma yang terhapus)
+ * @returns {{ text: string, caret: number, value: number|'' }}
+ */
+export function formatNominalInput(raw, caret, prevText = '') {
+    const s = String(raw ?? '');
+    if (s.replace(/[^\d]/g, '') === '' && !s.includes(',')) return { text: '', caret: 0, value: '' };
+
+    const firstComma = s.indexOf(',');
+    // Koma desimal terhapus (mis. backspace tepat di koma): kembalikan teks sebelumnya, kursor di kiri koma
+    if (firstComma === -1 && prevText.includes(',')) {
+        return { text: prevText, caret: prevText.indexOf(','), value: toNumber(prevText) };
+    }
+
+    const intRaw = firstComma === -1 ? s : s.slice(0, firstComma);
+    const decRaw = firstComma === -1 ? '' : s.slice(firstComma + 1);
+    const intDigits = intRaw.replace(/\D/g, '');
+    const decDigits = decRaw.replace(/\D/g, '').slice(0, 2);
+    const value = Number(`${intDigits || '0'}.${decDigits || '0'}`);
+    const text = formatRupiah(value);
+    const commaAt = text.indexOf(',');
+
+    // Petakan kursor: hitung digit di kiri kursor pada bagian bilangan bulat / desimal
+    let newCaret;
+    const typedExtraComma = firstComma !== -1 && s.indexOf(',', firstComma + 1) !== -1;
+    if (typedExtraComma || (firstComma !== -1 && caret > firstComma)) {
+        // kursor berada di bagian desimal (atau baru mengetik koma): letakkan setelah koma + digit desimal yang sudah dilewati
+        const decBefore = typedExtraComma ? 0 : s.slice(firstComma + 1, caret).replace(/\D/g, '').length;
+        newCaret = commaAt + 1 + Math.min(decBefore, 2);
+    } else {
+        const intLen = text.slice(0, commaAt).replace(/\D/g, '').length;
+        const leadingZeros = (intDigits.match(/^0+(?=\d)/) || [''])[0].length;
+        let k = Math.max(0, s.slice(0, caret).replace(/\D/g, '').length - leadingZeros);
+        k = Math.min(k, intLen);
+        newCaret = 0;
+        if (k > 0) {
+            let seen = 0;
+            for (let i = 0; i < commaAt; i++) {
+                if (/\d/.test(text[i])) seen++;
+                if (seen === k) { newCaret = i + 1; break; }
+            }
+        }
+    }
+    return { text, caret: newCaret, value };
+}
+
+/**
  * Baca input nominal menjadi angka. Menerima format Indonesia maupun angka biasa dari API:
  *   "720.720,00" -> 720720     "180.180,5" -> 180180.5    "Rp 1.588.799" -> 1588799
  *   "720720.00"  -> 720720     "909.91"    -> 909.91      "720,720.00"   -> 720720

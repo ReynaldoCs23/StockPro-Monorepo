@@ -42,7 +42,16 @@ test('separator yang hilang ditambahkan dan angka diformat gaya Indonesia', () =
     assert.deepEqual(tableLines(out), [
         '| Barang | Qty | Nilai |',
         '| --- | ---: | ---: |',
-        '| Galon | 4.860 | Rp 87.918.258 |',
+        '| Galon | 4.860 | Rp 87.918.258,00 |',
+    ]);
+});
+
+test('sel rupiah di tabel AI selalu ber-,00; yang sudah berformat tidak diubah', () => {
+    const out = normalizeAiMarkdown('| Barang | Nilai |\n| --- | --- |\n| A | Rp 87.918.258 |\n| B | Rp 720.720,00 |\n| C | -Rp 500 |');
+    assert.deepEqual(tableLines(out).slice(2), [
+        '| A | Rp 87.918.258,00 |',
+        '| B | Rp 720.720,00 |',
+        '| C | -Rp 500,00 |',
     ]);
 });
 

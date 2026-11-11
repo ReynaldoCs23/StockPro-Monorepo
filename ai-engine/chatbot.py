@@ -90,26 +90,26 @@ def get_financial_summary(start_date: str, end_date: str) -> str:
 
         f = lambda k: float(data.get(k, 0) or 0)
         produk = "\n".join(
-            f"  - {p['name']}: penjualan Rp {float(p['revenue']):,.0f}, HPP Rp {float(p['cogs']):,.0f}, laba Rp {float(p['profit']):,.0f}"
+            f"  - {p['name']}: penjualan {fmt_rp(float(p['revenue']))}, HPP {fmt_rp(float(p['cogs']))}, laba {fmt_rp(float(p['profit']))}"
             for p in data.get('laba_per_produk', [])
         ) or "  (tidak ada penjualan)"
 
         summary = (
             f"Periode: {start_date} s.d {end_date}\n"
             f"[LABA - angka resmi, sama dengan Dashboard]\n"
-            f"Penjualan Bersih (DPP, tanpa PPN): Rp {f('penjualan_dpp'):,.0f}\n"
-            f"HPP Barang Terjual (FIFO): Rp {f('hpp_terjual'):,.0f}\n"
-            f"LABA BERSIH: Rp {f('laba_bersih'):,.0f}\n"
+            f"Penjualan Bersih (DPP, tanpa PPN): {fmt_rp(f('penjualan_dpp'))}\n"
+            f"HPP Barang Terjual (FIFO): {fmt_rp(f('hpp_terjual'))}\n"
+            f"LABA BERSIH: {fmt_rp(f('laba_bersih'))}\n"
             f"Margin Laba: {f('margin_persen')}%\n"
             f"Laba per produk:\n{produk}\n"
             f"[ARUS KAS - termasuk PPN, BUKAN laba]\n"
-            f"Penjualan Distributor (net retur): Rp {f('penjualan_distributor_net'):,.0f}\n"
-            f"Total Belanja Stok (net retur): Rp {f('total_belanja_stok_net'):,.0f}\n"
-            f"  - Pembelian Supplier: Rp {f('pembelian_supplier'):,.0f}\n"
-            f"  - Biaya Jasa Makloon: Rp {f('biaya_makloon'):,.0f}\n"
-            f"  - Bahan Baku Makloon: Rp {f('bahan_baku_makloon'):,.0f}\n"
-            f"  - Retur ke Supplier: Rp {f('retur_ke_supplier'):,.0f}\n"
-            f"Retur dari Customer: Rp {f('retur_dari_customer'):,.0f}"
+            f"Penjualan Distributor (net retur): {fmt_rp(f('penjualan_distributor_net'))}\n"
+            f"Total Belanja Stok (net retur): {fmt_rp(f('total_belanja_stok_net'))}\n"
+            f"  - Pembelian Supplier: {fmt_rp(f('pembelian_supplier'))}\n"
+            f"  - Biaya Jasa Makloon: {fmt_rp(f('biaya_makloon'))}\n"
+            f"  - Bahan Baku Makloon: {fmt_rp(f('bahan_baku_makloon'))}\n"
+            f"  - Retur ke Supplier: {fmt_rp(f('retur_ke_supplier'))}\n"
+            f"Retur dari Customer: {fmt_rp(f('retur_dari_customer'))}"
         )
         return summary
     except Exception as e:
@@ -124,6 +124,15 @@ def fmt_id(n) -> str:
     if x.is_integer():
         return f"{int(x):,}".replace(",", ".")
     return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def fmt_rp(n) -> str:
+    """Rupiah gaya faktur, selalu 2 desimal: 87918258 -> "Rp 87.918.258,00"; negatif -> "-Rp 33.768.851,00"."""
+    try:
+        x = float(n or 0)
+    except (TypeError, ValueError):
+        return f"Rp {n}"
+    s = f"{abs(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"-Rp {s}" if x < 0 else f"Rp {s}"
 
 def get_item_mutations(start_date: str, end_date: str, search_item: str = "") -> str:
     """Mengambil mutasi barang masuk/keluar/retur per barang untuk rentang tanggal (YYYY-MM-DD), dihitung dengan modul Laporan Mutasi (angka identik). Berisi SEMUA barang (termasuk dari transaksi multi-item), satuan dasar, jenis (Barang Fisik / Jasa/Non-Stok), info konversi box, serta ringkasan total & nilai Rp. Isi search_item HANYA JIKA user mencari barang spesifik."""
@@ -140,10 +149,10 @@ def get_item_mutations(start_date: str, end_date: str, search_item: str = "") ->
         lines = [
             f"SUMBER: {data.get('sumber')} | Periode {data['periode']['start']} s.d {data['periode']['end']}",
             "[RINGKASAN TOTAL - wajib sama dengan Laporan Mutasi]",
-            f"Masuk: {fmt_id(m.get('transaksi'))} transaksi, {fmt_id(m.get('qty_barang_fisik'))} unit barang fisik (lintas satuan), nilai Rp {fmt_id(m.get('nilai_rp'))}",
-            f"Keluar: {fmt_id(k.get('transaksi'))} transaksi, {fmt_id(k.get('qty_barang_fisik'))} unit barang fisik + {fmt_id(k.get('qty_jasa'))} unit jasa (non-stok), nilai Rp {fmt_id(k.get('nilai_rp'))}",
-            f"Retur: {fmt_id(rt.get('kasus'))} kasus, {fmt_id(rt.get('qty'))} unit, nilai Rp {fmt_id(rt.get('nilai_rp'))}",
-            f"Saldo rekonsiliasi nilai (masuk - keluar - retur): Rp {fmt_id(r.get('saldo_rekonsiliasi_rp'))}",
+            f"Masuk: {fmt_id(m.get('transaksi'))} transaksi, {fmt_id(m.get('qty_barang_fisik'))} unit barang fisik (lintas satuan), nilai {fmt_rp(m.get('nilai_rp'))}",
+            f"Keluar: {fmt_id(k.get('transaksi'))} transaksi, {fmt_id(k.get('qty_barang_fisik'))} unit barang fisik + {fmt_id(k.get('qty_jasa'))} unit jasa (non-stok), nilai {fmt_rp(k.get('nilai_rp'))}",
+            f"Retur: {fmt_id(rt.get('kasus'))} kasus, {fmt_id(rt.get('qty'))} unit, nilai {fmt_rp(rt.get('nilai_rp'))}",
+            f"Saldo rekonsiliasi nilai (masuk - keluar - retur): {fmt_rp(r.get('saldo_rekonsiliasi_rp'))}",
             f"Catatan: {r.get('catatan')}",
         ]
         if data.get("filter_barang"):
@@ -221,7 +230,7 @@ PANDUAN INSIGHT:
 - Jangan hanya membacakan ulang data mentah. Berikan insight bisnis yang relevan untuk distribusi PT Mara Jaya Dewi Sakti, misalnya barang dengan perputaran tertinggi, bahan baku yang menumpuk tanpa keluaran, atau ketidakseimbangan masuk-keluar per barang.
 - Setiap insight harus didukung angka dari data. Bila hanya dugaan, tandai sebagai dugaan.
 - Jangan mengaitkan angka dengan wilayah, pelanggan, atau penyebab yang tidak tercantum di data.
-- Nilai rupiah negatif ditulis "-Rp 33.768.851" (tanda minus sebelum "Rp").
+- Nilai rupiah negatif ditulis "-Rp 33.768.851,00" (tanda minus sebelum "Rp").
 
 FORMAT OUTPUT (WAJIB):
 - Selalu jawab dalam Bahasa Indonesia dengan markdown yang valid. Jangan gunakan HTML, jangan mengulang pertanyaan user, jangan memakai emoji, jangan memakai LaTeX ($ atau \\frac), jangan menampilkan query SQL.
@@ -233,7 +242,7 @@ FORMAT OUTPUT (WAJIB):
   5. "## Catatan Data" berisi batasan data atau hal yang perlu dicek, dan diakhiri kalimat: "Angka perlu diverifikasi terhadap Laporan Mutasi sebelum dipakai untuk keputusan penting."
 - Untuk pertanyaan singkat yang bukan analisis (mis. sapaan, definisi), jawab ringkas tanpa struktur di atas.
 - Tabel markdown: baris header, baris separator (| --- | --- |), dan baris data ditulis berurutan TANPA baris kosong di antaranya; setiap baris tabel di baris tersendiri (jangan menyambung dengan "||"). Beri satu baris kosong sebelum dan sesudah tabel. Kolom angka boleh rata kanan (| ---: |).
-- Angka memakai format Indonesia: titik sebagai pemisah ribuan (68.403) dan "Rp 87.918.258" untuk rupiah. Satuan (pcs, unit, box, laporan) ditulis di kolom Satuan tersendiri, bukan digabung dengan angka.
+- Angka memakai format Indonesia: titik sebagai pemisah ribuan (68.403) dan rupiah SELALU dengan dua desimal seperti faktur: "Rp 87.918.258,00" (koma desimal, contoh lain "Rp 720.720,00"). Tulis nilai rupiah persis seperti data alat. Satuan (pcs, unit, box, laporan) ditulis di kolom Satuan tersendiri, bukan digabung dengan angka.
 """
 
 TOOLS = [get_current_stock, get_financial_summary, get_item_mutations, get_database_schema, execute_sql_query]

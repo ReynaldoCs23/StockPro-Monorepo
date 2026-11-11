@@ -4,7 +4,7 @@ import { Calendar, Download, FileText } from '../components/icons/Icons';
 import html2pdf from 'html2pdf.js';
 import useAppStore from '../store/useAppStore';
 import toast from 'react-hot-toast';
-import { formatRp } from '../utils/money';
+import { formatRp, formatRupiah } from '../utils/money';
 
 // ---------------------------------------------------------------------------
 // Format helpers (semua nilai berasal dari API; tidak ada angka hardcode)
@@ -215,7 +215,7 @@ export default function LaporanMutasi() {
                 csvContent += mapRowFn(row, index + 1).map(q).join(",") + "\n";
                 if (row.is_multi) {
                     row.items.forEach(it => {
-                        csvContent += ['', '', '', '', `└ ${it.nama_barang}`, qtyText(it), it.harga_satuan, it.subtotal_bulat, ''].map(q).join(",") + "\n";
+                        csvContent += ['', '', '', '', `└ ${it.nama_barang}`, qtyText(it), formatRupiah(it.harga_satuan), formatRupiah(it.subtotal_bulat), ''].map(q).join(",") + "\n";
                     });
                 }
             });
@@ -226,21 +226,21 @@ export default function LaporanMutasi() {
             "BAGIAN I: REKAPITULASI BARANG MASUK (INBOUND)",
             ["No", "ID Transaksi", "Tanggal", "Sumber / Supplier", "Nama Barang", "Qty (satuan dasar)", "Harga Satuan (sblm PPN)", "Total Nilai", "Keterangan"],
             reportData.inbound_data,
-            (r, i) => [i, r.id_transaksi, r.tanggal, r.sumber, r.nama_barang, r.is_multi ? r.qty : qtyText(r), r.harga_satuan ?? '-', r.total_nilai_bulat, r.keterangan]
+            (r, i) => [i, r.id_transaksi, r.tanggal, r.sumber, r.nama_barang, r.is_multi ? r.qty : qtyText(r), r.harga_satuan == null ? '-' : formatRupiah(r.harga_satuan), formatRupiah(r.total_nilai_bulat), r.keterangan]
         );
 
         addSectionToCSV(
             "BAGIAN II: REKAPITULASI BARANG KELUAR (OUTBOUND / DISTRIBUSI)",
             ["No", "ID Transaksi", "Tanggal", "Tujuan / Customer", "Nama Barang", "Qty (satuan dasar)", "Harga Satuan (sblm PPN)", "Total Nilai", "Keterangan"],
             reportData.outbound_data,
-            (r, i) => [i, r.id_transaksi, r.tanggal, r.tujuan, r.nama_barang + (r.is_jasa ? ' [JASA]' : ''), r.is_multi ? r.qty : qtyText(r), r.harga_satuan ?? '-', r.total_nilai_bulat, r.keterangan]
+            (r, i) => [i, r.id_transaksi, r.tanggal, r.tujuan, r.nama_barang + (r.is_jasa ? ' [JASA]' : ''), r.is_multi ? r.qty : qtyText(r), r.harga_satuan == null ? '-' : formatRupiah(r.harga_satuan), formatRupiah(r.total_nilai_bulat), r.keterangan]
         );
 
         addSectionToCSV(
             "BAGIAN III: REKAPITULASI RETUR & REJECT",
             ["No", "ID Retur", "Tanggal", "Asal Retur", "Nama Barang", "Qty", "Kondisi / Masalah", "Estimasi Nilai", "Tindakan / Disposisi"],
             reportData.returns_data,
-            (r, i) => [i, r.id_transaksi, r.tanggal, r.asal_retur, r.nama_barang, r.qty, r.kondisi, r.estimasi_nilai_bulat, r.tindakan]
+            (r, i) => [i, r.id_transaksi, r.tanggal, r.asal_retur, r.nama_barang, r.qty, r.kondisi, formatRupiah(r.estimasi_nilai_bulat), r.tindakan]
         );
 
         csvContent += "NET MUTASI PER BARANG (BARANG FISIK)\n";
@@ -251,10 +251,10 @@ export default function LaporanMutasi() {
         csvContent += "\n";
 
         csvContent += "RINGKASAN REKONSILIASI NILAI\n";
-        csvContent += `Nilai Total Masuk (Inbound),${reportData.summary.inbound.nilai}\n`;
-        csvContent += `Nilai Total Keluar (Outbound),${reportData.summary.outbound.nilai}\n`;
-        csvContent += `Nilai Retur / Potongan Reject,-${reportData.summary.returns.nilai}\n`;
-        csvContent += `SALDO REKONSILIASI BERSIH,${reportData.summary.net.nilai}\n`;
+        csvContent += `Nilai Total Masuk (Inbound),${q(formatRupiah(reportData.summary.inbound.nilai))}\n`;
+        csvContent += `Nilai Total Keluar (Outbound),${q(formatRupiah(reportData.summary.outbound.nilai))}\n`;
+        csvContent += `Nilai Retur / Potongan Reject,${q('-' + formatRupiah(reportData.summary.returns.nilai))}\n`;
+        csvContent += `SALDO REKONSILIASI BERSIH,${q(formatRupiah(reportData.summary.net.nilai))}\n`;
         csvContent += `SHA-256 data laporan,${auditHash}\n`;
 
         const encodedUri = encodeURI(csvContent);

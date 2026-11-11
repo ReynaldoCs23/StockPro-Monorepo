@@ -37,10 +37,13 @@ const joinRow = (cells) => `| ${cells.join(' | ')} |`;
 const addThousandDots = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
 export const formatNumberCell = (cell) => {
-    const m = cell.match(/^(-|\+)?(Rp\s?)?(\d{4,})(\s?%|\s?[A-Za-z]{1,10})?$/);
+    // Rupiah tanpa desimal ("Rp 87918258" / "Rp 87.918.258") -> format faktur "Rp 87.918.258,00"
+    const rp = cell.match(/^(-)?\s?Rp\.?\s?(\d+|\d{1,3}(?:\.\d{3})+)$/i);
+    if (rp) return `${rp[1] ? '-' : ''}Rp ${addThousandDots(rp[2].replace(/\./g, ''))},00`;
+    const m = cell.match(/^(-|\+)?(\d{4,})(\s?%|\s?[A-Za-z]{1,10})?$/);
     if (!m) return cell;
-    const [, sign = '', rp = '', digits, suffix = ''] = m;
-    return `${sign}${rp ? 'Rp ' : ''}${addThousandDots(digits)}${suffix}`;
+    const [, sign = '', digits, suffix = ''] = m;
+    return `${sign}${addThousandDots(digits)}${suffix}`;
 };
 
 /** Sel dianggap numerik: angka (opsional Rp, %, tanda, satuan pendek) atau tanda kosong "-". */

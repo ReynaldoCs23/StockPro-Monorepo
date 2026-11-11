@@ -1,5 +1,5 @@
 import { normalizeAiMarkdown } from './aiMarkdown.js';
-import { formatRp as formatRpShared } from './money.js';
+import { formatRp as formatRpShared, formatRupiah as formatRupiahShared } from './money.js';
 
 // 1. Generate ID Otomatis (Contoh: BRG001, SUP002)
 export const generateId = (prefix, list, idKey) => {
@@ -50,9 +50,9 @@ export const exportToCSV = (data, filename) => {
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 export const formatRpExport = (angka) => formatRpShared(angka); // sama dengan tampilan: Rp 1.588.799,00
 
-// 5b-2. Format angka biasa untuk Export CSV agar terbaca sebagai ANGKA di Excel locale Indonesia
-//       (tanpa pemisah ribuan, desimal pakai koma, maks 2 desimal). Contoh: 1965405.5999 -> "1965405,6"
-export const formatAngkaExport = (angka) => String(round2(angka)).replace('.', ',');
+// 5b-2. Format nominal untuk Export CSV / cetak laporan: sama dengan tampilan & faktur ("1.965.405,60").
+//       Excel berbahasa Indonesia tetap membacanya sebagai angka (titik = ribuan, koma = desimal).
+export const formatAngkaExport = (angka) => formatRupiahShared(angka);
 
 // 5c. Flatten transaksi (1 item = 1 baris) dengan nilai keuangan per item
 //     Discount, DPP, dan PPN header dialokasikan proporsional sesuai porsi total item.
