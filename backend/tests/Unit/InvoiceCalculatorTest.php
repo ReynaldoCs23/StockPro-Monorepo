@@ -66,15 +66,20 @@ class InvoiceCalculatorTest extends TestCase
                 [['qty' => 3, 'harga' => '333.335']], 0, 0, 0, 0, true,
                 ['lines' => ['1000.00'], 'subtotal' => '1000.00', 'dpp' => '917.00', 'ppn' => '0.00', 'total' => '1000.00'],
             ],
-            // PPN 916.667 x 12% = 110.000,04 -> dibulatkan KE ATAS = 110.001,00
-            'PPnBM ikut total, PPN dibulatkan ke atas' => [
+            // PPN 916.667 x 12% = 110.000,04 -> desimal < 0,50 dibulatkan KE BAWAH = 110.000,00
+            'PPnBM ikut total, PPN desimal < 0,50 turun' => [
                 [['qty' => 1, 'harga' => '1000000']], 0, 0, '25000.50', 11, true,
-                ['lines' => ['1000000.00'], 'subtotal' => '1000000.00', 'dpp' => '916667.00', 'ppn' => '110001.00', 'total' => '1135001.50'],
+                ['lines' => ['1000000.00'], 'subtotal' => '1000000.00', 'dpp' => '916667.00', 'ppn' => '110000.00', 'total' => '1135000.50'],
             ],
-            // PPN 1.000.001 x 11% = 110.000,11 -> 110.001,00 (bukan 110.000,00)
-            'PPN pecahan kecil tetap dibulatkan ke atas (retur)' => [
+            // PPN 1.000.001 x 11% = 110.000,11 -> 110.000,00
+            'PPN pecahan kecil dibulatkan ke bawah (retur)' => [
                 [['qty' => 1, 'harga' => '1000001']], 0, 0, 0, 11, false,
-                ['lines' => ['1000001.00'], 'subtotal' => '1000001.00', 'dpp' => '1000001.00', 'ppn' => '110001.00', 'total' => '1110002.00'],
+                ['lines' => ['1000001.00'], 'subtotal' => '1000001.00', 'dpp' => '1000001.00', 'ppn' => '110000.00', 'total' => '1110001.00'],
+            ],
+            // DPP 4.545.454,5454 -> 4.545.455 ; PPN 545.454,60 -> desimal >= 0,50 dibulatkan KE ATAS = 545.455,00
+            'DPP dan PPN desimal >= 0,50 naik' => [
+                [['qty' => 1, 'harga' => '4958677.6860']], 0, 0, 0, 11, true,
+                ['lines' => ['4958678.00'], 'subtotal' => '4958678.00', 'dpp' => '4545455.00', 'ppn' => '545455.00', 'total' => '5504133.00'],
             ],
         ];
     }
@@ -100,15 +105,15 @@ class InvoiceCalculatorTest extends TestCase
         $r = InvoiceCalculator::calculate([['qty' => 40, 'harga' => '18018'], ['qty' => 20, 'harga' => '9009']], 0, 0, 0, 11, true, true);
         $this->assertSame('per_baris', $r['mode_ppn']);
         $this->assertSame(['660660.00', '165165.00'], $r['lines_dpp']);
-        $this->assertSame(['79280.00', '19820.00'], $r['lines_ppn']);
-        $this->assertSame('99100.00', $r['ppn']);
-        $this->assertSame('1000000.00', $r['total']);
+        $this->assertSame(['79279.00', '19820.00'], $r['lines_ppn']); // 79.279,20 turun ; 19.819,80 naik
+        $this->assertSame('99099.00', $r['ppn']);
+        $this->assertSame('999999.00', $r['total']);
 
         // Potongan 100 dibagi 33,33 + 33,33 + 33,34 (sisa di baris terakhir)
         $r = InvoiceCalculator::calculate([['qty' => 1, 'harga' => '1000'], ['qty' => 1, 'harga' => '1000'], ['qty' => 1, 'harga' => '1000']], 100, 0, 0, 11, true, true);
         $this->assertSame(['886.00', '886.00', '886.00'], $r['lines_dpp']);
-        $this->assertSame('321.00', $r['ppn']);
-        $this->assertSame('3221.00', $r['total']);
+        $this->assertSame('318.00', $r['ppn']); // 3 x (886 x 12% = 106,32 -> 106)
+        $this->assertSame('3218.00', $r['total']);
     }
 
     public function test_pembulatan_half_up_dan_tanpa_float(): void
@@ -120,6 +125,19 @@ class InvoiceCalculatorTest extends TestCase
         $this->assertSame('0.30', InvoiceCalculator::money(0.1 + 0.2));
         $this->assertSame('909.91', InvoiceCalculator::num(909.91));
         $this->assertSame('1588799.00', InvoiceCalculator::money('1588799'));
+    }
+
+    /** Aturan pembulatan rupiah dari user: desimal < 0,50 turun, >= 0,50 naik (berlaku untuk DPP & PPN). */
+    public function test_aturan_pembulatan_rupiah_contoh_user(): void
+    {
+        $this->assertSame('1499', InvoiceCalculator::roundHalfUp('1499.49', 0));
+        $this->assertSame('1500', InvoiceCalculator::roundHalfUp('1499.50', 0));
+        $this->assertSame('1499', InvoiceCalculator::roundHalfUp('1499.4999999999', 0));
+        $this->assertSame('1500', InvoiceCalculator::roundHalfUp('1499.51', 0));
+
+        // PPN dari kalkulator (retur, tarif 11%): 13.632 x 11% = 1.499,52 -> 1.500 ; 13.631 x 11% = 1.499,41 -> 1.499
+        $this->assertSame('1500.00', InvoiceCalculator::calculate([['qty' => 1, 'harga' => '13632']], 0, 0, 0, 11, false)['ppn']);
+        $this->assertSame('1499.00', InvoiceCalculator::calculate([['qty' => 1, 'harga' => '13631']], 0, 0, 0, 11, false)['ppn']);
     }
 
     public function test_pembulatan_ke_atas_untuk_ppn(): void

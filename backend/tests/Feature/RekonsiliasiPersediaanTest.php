@@ -92,10 +92,10 @@ class RekonsiliasiPersediaanTest extends TestCase
         $this->assertSame('78000.00', $feb['penjualan']['laba_kotor_barang']);
         $this->assertSame('48.75', $feb['penjualan']['margin_barang_persen']);
 
-        // PPN: keluaran DPP 146.667 x 12% = 17.600,04 -> 17.601 ; masukan DPP 55.000 x 12% = 6.600
-        $this->assertSame('17601.00', $feb['pajak']['ppn_keluaran']);
+        // PPN: keluaran DPP 146.667 x 12% = 17.600,04 -> 17.600 (desimal < 0,50 turun) ; masukan 55.000 x 12% = 6.600
+        $this->assertSame('17600.00', $feb['pajak']['ppn_keluaran']);
         $this->assertSame('6600.00', $feb['pajak']['ppn_masukan']);
-        $this->assertSame('11001.00', $feb['pajak']['ppn_kurang_bayar']);
+        $this->assertSame('11000.00', $feb['pajak']['ppn_kurang_bayar']);
 
         // Laba kotor total sama dengan perhitungan laba Dashboard
         $dash = app(DashboardController::class)->getProfitAnalyticsBase('2026-02-01 00:00:00', '2026-02-28 23:59:59');

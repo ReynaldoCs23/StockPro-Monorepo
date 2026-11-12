@@ -13,19 +13,21 @@ use InvalidArgumentException;
  *      Contoh: 2.160 x 909,91 = 1.965.405,60  ->  1.965.406,00
  *   2. Subtotal (harga jual) = jumlah harga jual per baris.
  *   3. Dasar = subtotal - potongan harga - uang muka.
+ *   Aturan pembulatan ke rupiah (DPP & PPN, juga harga jual per baris):
+ *        desimal < 0,50  -> dibulatkan ke bawah  (Rp 1.499,49 -> Rp 1.499)
+ *        desimal >= 0,50 -> dibulatkan ke atas   (Rp 1.499,50 -> Rp 1.500)
  *   4. DPP:
  *        - DPP Nilai Lain (PMK 131/2024): 11/12 x dasar, dibulatkan ke rupiah.
  *        - selain itu: dasar, dibulatkan ke rupiah.
- *   5. PPN dibulatkan KE ATAS ke rupiah penuh (ceiling), mis. 110.000,04 -> 110.001,00:
+ *   5. PPN dibulatkan ke rupiah dengan aturan yang sama (110.000,04 -> 110.000; 216.194,64 -> 216.195):
  *        - DPP Nilai Lain: DPP x (pajak_persen x 12/11)%   (pajak_persen 11 -> tarif 12%)
  *        - selain itu:      DPP x pajak_persen%
- *      PPN yang sudah bulat tidak berubah (99.099,00 tetap 99.099,00).
  *   6. Total = dasar + PPN + PPnBM.
  *
- * PPN_PER_BARIS = false (dipakai): DPP & PPN dihitung SEKALI dari total dasar, lalu PPN dibulatkan
- *   ke atas ke ,00. Contoh INV-IN-2610-0009: PPN 12% x 825.825 = 99.099,00.
+ * PPN_PER_BARIS = false (dipakai): DPP & PPN dihitung SEKALI dari total dasar, lalu dibulatkan ke rupiah.
+ *   Contoh INV-IN-2610-0009: PPN 12% x 825.825 = 99.099,00.
  * PPN_PER_BARIS = true (cadangan): DPP & PPN dihitung per baris barang lalu dijumlahkan; potongan +
- *   uang muka dialokasikan proporsional (sisa pembulatan di baris terakhir). 0009 -> 79.280 + 19.820 = 99.100.
+ *   uang muka dialokasikan proporsional (sisa pembulatan di baris terakhir). 0009 -> 79.279 + 19.820 = 99.099.
  * Untuk transaksi satu baris kedua mode menghasilkan nilai yang sama.
  *
  * Semua nilai keluaran berupa string desimal 2 digit ("1965406.00") agar presisi terjaga
@@ -83,7 +85,7 @@ class InvoiceCalculator
         $linePpn = [];
         foreach ($bases as $base) {
             $d = self::dppOf($base, $dppNilaiLain);
-            $p = self::roundUp(bcdiv(bcmul($d, $tarif, self::SCALE), '100', self::SCALE), 0);
+            $p = self::roundHalfUp(bcdiv(bcmul($d, $tarif, self::SCALE), '100', self::SCALE), 0); // < 0,50 turun, >= 0,50 naik
             $lineDpp[] = self::money($d);
             $linePpn[] = self::money($p);
             $dpp = bcadd($dpp, $d, 2);
