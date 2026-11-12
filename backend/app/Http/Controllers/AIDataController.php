@@ -98,8 +98,15 @@ class AIDataController extends Controller
                 'masuk' => ['transaksi' => $s['inbound']['count'], 'qty_barang_fisik' => $s['inbound']['qty_fisik'], 'qty_jasa' => $s['inbound']['qty_jasa'], 'nilai_rp' => $s['inbound']['nilai']],
                 'keluar' => ['transaksi' => $s['outbound']['count'], 'qty_barang_fisik' => $s['outbound']['qty_fisik'], 'qty_jasa' => $s['outbound']['qty_jasa'], 'nilai_rp' => $s['outbound']['nilai']],
                 'retur' => ['kasus' => $s['returns']['count'], 'qty' => $s['returns']['qty'], 'nilai_rp' => $s['returns']['nilai']],
-                'saldo_rekonsiliasi_rp' => $s['net']['nilai'],
-                'catatan' => 'Nilai Rp termasuk PPN 11%; nilai per transaksi dibulatkan ke rupiah lalu dijumlahkan. Qty dalam satuan dasar tiap barang.',
+                'catatan' => 'Nilai Rp masuk/keluar/retur = nilai faktur TERMASUK PPN (hanya info, bukan rekonsiliasi). Qty dalam satuan dasar tiap barang.',
+            ],
+            // Rekonsiliasi sesuai kaidah akuntansi (sama dengan Laporan Mutasi): persediaan tanpa PPN (buku batch FIFO),
+            // penjualan/laba kotor (sama dengan Dashboard) dan PPN kurang/lebih bayar.
+            'rekonsiliasi' => [
+                'persediaan' => $report['rekonsiliasi']['persediaan'],
+                'penjualan' => $report['rekonsiliasi']['penjualan'],
+                'pajak' => $report['rekonsiliasi']['pajak'],
+                'selisih_data_batch' => $report['rekonsiliasi']['cek_batch']['selisih'],
             ],
             'filter_barang' => $search_item !== '' ? $search_item : null,
             'per_barang' => $perBarang,

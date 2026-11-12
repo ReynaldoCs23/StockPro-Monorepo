@@ -30,7 +30,7 @@ class MutasiReportService
     private const JASA_MARKERS = ['jasa', 'service', 'non-stok', 'non stok'];
 
     /** Versi format kanonikal hash. Naikkan jika struktur data yang di-hash berubah. */
-    public const HASH_CANONICAL_VERSION = 1;
+    public const HASH_CANONICAL_VERSION = 2; // v2: blok rekonsiliasi ikut di-hash
 
     // =====================================================================
     // KONVERSI SATUAN (terpusat)
@@ -153,6 +153,12 @@ class MutasiReportService
             'returns_data' => $returns,
             'net_per_barang' => $this->netPerBarang($inbound, $outbound, $returnsCounted),
         ];
+
+        // Rekonsiliasi nilai sesuai kaidah akuntansi: (A) persediaan tanpa PPN dari buku batch FIFO,
+        // (B) penjualan, laba kotor & PPN. Menggantikan "saldo" lama (nilai beli - nilai jual, termasuk PPN).
+        $rekon = (new RekonsiliasiPersediaanService())->build($startDate, $endDate);
+        unset($rekon['persediaan']['_hpp_retur_pelanggan']);
+        $report['rekonsiliasi'] = $rekon;
 
         $report['audit'] = [
             'algorithm' => 'SHA-256',

@@ -152,9 +152,22 @@ def get_item_mutations(start_date: str, end_date: str, search_item: str = "") ->
             f"Masuk: {fmt_id(m.get('transaksi'))} transaksi, {fmt_id(m.get('qty_barang_fisik'))} unit barang fisik (lintas satuan), nilai {fmt_rp(m.get('nilai_rp'))}",
             f"Keluar: {fmt_id(k.get('transaksi'))} transaksi, {fmt_id(k.get('qty_barang_fisik'))} unit barang fisik + {fmt_id(k.get('qty_jasa'))} unit jasa (non-stok), nilai {fmt_rp(k.get('nilai_rp'))}",
             f"Retur: {fmt_id(rt.get('kasus'))} kasus, {fmt_id(rt.get('qty'))} unit, nilai {fmt_rp(rt.get('nilai_rp'))}",
-            f"Saldo rekonsiliasi nilai (masuk - keluar - retur): {fmt_rp(r.get('saldo_rekonsiliasi_rp'))}",
             f"Catatan: {r.get('catatan')}",
         ]
+        rk = data.get("rekonsiliasi") or {}
+        ps, pj, pk = rk.get("persediaan", {}), rk.get("penjualan", {}), rk.get("pajak", {})
+        if ps:
+            lines += [
+                "[REKONSILIASI - pakai angka ini untuk analisis nilai; JANGAN mengurangkan nilai faktur keluar dari nilai faktur masuk]",
+                f"Persediaan (tanpa PPN, buku batch FIFO): saldo awal {fmt_rp(ps.get('saldo_awal'))}, masuk {fmt_rp(ps.get('total_masuk'))}, keluar {fmt_rp(ps.get('total_keluar'))}, saldo akhir {fmt_rp(ps.get('saldo_akhir'))}, perubahan {fmt_rp(ps.get('perubahan'))}",
+                f"  rincian masuk: " + ", ".join(f"{k} {fmt_rp(v)}" for k, v in (ps.get('masuk') or {}).items() if float(v or 0) != 0),
+                f"  rincian keluar: " + ", ".join(f"{k} {fmt_rp(v)}" for k, v in (ps.get('keluar') or {}).items() if float(v or 0) != 0),
+                f"Penjualan barang {fmt_rp(pj.get('penjualan_barang'))}, retur penjualan {fmt_rp(pj.get('retur_penjualan'))}, HPP bersih {fmt_rp(pj.get('hpp_bersih'))}, laba kotor barang {fmt_rp(pj.get('laba_kotor_barang'))} (margin {pj.get('margin_barang_persen')}%)",
+                f"Penjualan jasa {fmt_rp(pj.get('penjualan_jasa'))}; laba kotor total {fmt_rp(pj.get('laba_kotor_total'))} (sama dengan Dashboard)",
+                f"PPN keluaran {fmt_rp(pk.get('ppn_keluaran'))}, PPN masukan {fmt_rp(pk.get('ppn_masukan'))}, PPN kurang(+)/lebih(-) bayar {fmt_rp(pk.get('ppn_kurang_bayar'))}",
+            ]
+            if float(rk.get('selisih_data_batch') or 0) != 0:
+                lines.append(f"PERHATIAN: selisih data batch {fmt_rp(rk.get('selisih_data_batch'))} - sebutkan di Catatan Data.")
         if data.get("filter_barang"):
             lines.append(f"(Daftar per barang difilter: '{data['filter_barang']}'; ringkasan total tetap untuk seluruh periode.)")
         lines.append("[PER BARANG - qty dalam satuan dasar; jangan jumlahkan lintas satuan]")

@@ -23,6 +23,28 @@ const fmtDateTime = (d) => {
 };
 const ymdToDmy = (s) => (s || '').split('-').reverse().join('/');
 
+// Baris rekonsiliasi: label kiri, nominal kanan (format faktur ,00)
+const RekonRow = ({ label, value, op = '', strong = false, accent = '', note }) => (
+    <div className={`flex justify-between gap-2 ${strong ? 'border-t border-[#e2e8f0] pt-1.5 mt-1.5' : ''}`}>
+        <span className={strong ? 'font-extrabold text-[#1e293b]' : ''}>
+            {op && <span className="inline-block w-3 text-[#94a3b8]">{op}</span>}{label}
+            {note && <span className="block text-[7px] text-[#94a3b8] font-normal">{note}</span>}
+        </span>
+        <span className={`whitespace-nowrap ${strong ? 'font-extrabold' : 'font-semibold text-[#1e293b]'} ${accent}`}>{formatRp(value)}</span>
+    </div>
+);
+
+const MASUK_LABEL = {
+    pembelian: 'Pembelian (harga perolehan)', makloon_masuk: 'Barang jadi dari makloon', retur_pelanggan: 'Retur dari pelanggan',
+    retur_pengganti: 'Barang pengganti dari supplier', pengembalian_galon: 'Pengembalian galon', penyesuaian_tambah: 'Penyesuaian stok (+)', lainnya: 'Masuk lainnya',
+};
+const KELUAR_LABEL = {
+    hpp_penjualan: 'HPP barang terjual (FIFO)', bahan_ke_makloon: 'Bahan baku dikirim ke makloon', retur_ke_supplier: 'Retur ke supplier',
+    pengganti_ke_pelanggan: 'Barang pengganti ke pelanggan', penyesuaian_kurang: 'Penyesuaian stok (-)', lainnya: 'Keluar lainnya',
+};
+const WAJIB_TAMPIL = ['pembelian', 'retur_pelanggan', 'hpp_penjualan', 'retur_ke_supplier'];
+const tampilkan = (obj) => Object.entries(obj || {}).filter(([k, v]) => WAJIB_TAMPIL.includes(k) || Number(v) !== 0);
+
 const SUB_TEXT = 'block text-[7px] text-[#94a3b8] font-normal leading-tight';
 
 /** Qty utama dalam satuan dasar + detail konversi (bila dibeli per box). */
@@ -250,11 +272,33 @@ export default function LaporanMutasi() {
         });
         csvContent += "\n";
 
+        const rk = reportData.rekonsiliasi || {};
+        const ps = rk.persediaan || {}, pj = rk.penjualan || {}, pk = rk.pajak || {};
+        const line = (label, v) => { csvContent += `${q(label)},${q(formatRupiah(v))}\n`; };
         csvContent += "RINGKASAN REKONSILIASI NILAI\n";
-        csvContent += `Nilai Total Masuk (Inbound),${q(formatRupiah(reportData.summary.inbound.nilai))}\n`;
-        csvContent += `Nilai Total Keluar (Outbound),${q(formatRupiah(reportData.summary.outbound.nilai))}\n`;
-        csvContent += `Nilai Retur / Potongan Reject,${q('-' + formatRupiah(reportData.summary.returns.nilai))}\n`;
-        csvContent += `SALDO REKONSILIASI BERSIH,${q(formatRupiah(reportData.summary.net.nilai))}\n`;
+        csvContent += "A. NILAI PERSEDIAAN (harga perolehan, tanpa PPN, tanpa jasa)\n";
+        line(`Saldo awal (${reportData.periode?.start})`, ps.saldo_awal);
+        Object.entries(ps.masuk || {}).forEach(([k, v]) => line(`+ ${MASUK_LABEL[k] || k}`, v));
+        Object.entries(ps.keluar || {}).forEach(([k, v]) => line(`- ${KELUAR_LABEL[k] || k}`, v));
+        line(`Saldo akhir (${reportData.periode?.end})`, ps.saldo_akhir);
+        line('Perubahan nilai persediaan', ps.perubahan);
+        csvContent += "\nB. PENJUALAN, LABA & PAJAK (tanpa PPN)\n";
+        line('Penjualan barang', pj.penjualan_barang);
+        line('- Retur penjualan', pj.retur_penjualan);
+        line('- HPP bersih (FIFO)', pj.hpp_bersih);
+        line(`Laba kotor barang (margin ${String(pj.margin_barang_persen).replace('.', ',')}%)`, pj.laba_kotor_barang);
+        line('+ Penjualan jasa (non-stok)', pj.penjualan_jasa);
+        line('Laba kotor total', pj.laba_kotor_total);
+        line('PPN keluaran', pk.ppn_keluaran);
+        line('- PPN retur penjualan', pk.ppn_retur_penjualan);
+        line('PPN masukan', pk.ppn_masukan);
+        line('- PPN retur pembelian', pk.ppn_retur_pembelian);
+        line('PPN kurang (+) / lebih (-) bayar', pk.ppn_kurang_bayar);
+        csvContent += "\nINFO NILAI FAKTUR (termasuk PPN)\n";
+        line('Total masuk', reportData.summary.inbound.nilai);
+        line('Total keluar', reportData.summary.outbound.nilai);
+        line('Total retur', reportData.summary.returns.nilai);
+        if (Number(rk.cek_batch?.selisih) !== 0) line('PERHATIAN: selisih data batch (perlu dicek)', rk.cek_batch.selisih);
         csvContent += `SHA-256 data laporan,${auditHash}\n`;
 
         const encodedUri = encodeURI(csvContent);
@@ -386,7 +430,8 @@ export default function LaporanMutasi() {
                                 <div>
                                     <div className="text-xl font-extrabold text-[#1e293b] tracking-tight">{reportData.summary.net.qty > 0 ? '+' : ''}{fmtNum(reportData.summary.net.qty)} <span className="text-[10px] text-[#64748b] font-normal">Unit</span></div>
                                     <div className="text-[8px] text-[#94a3b8]">barang fisik, lintas jenis</div>
-                                    <div className="text-[10px] font-medium text-[#64748b] mt-1">Saldo: {formatRp(reportData.summary.net.nilai)}</div>
+                                    <div className="text-[8px] text-[#94a3b8] mt-1">Perubahan nilai persediaan</div>
+                                    <div className={`text-[10px] font-bold whitespace-nowrap ${Number(reportData.rekonsiliasi?.persediaan?.perubahan) >= 0 ? 'text-[#047857]' : 'text-[#e11d48]'}`}>{Number(reportData.rekonsiliasi?.persediaan?.perubahan) > 0 ? '+' : ''}{formatRp(reportData.rekonsiliasi?.persediaan?.perubahan)}</div>
                                 </div>
                             </div>
                         </div>
@@ -573,44 +618,71 @@ export default function LaporanMutasi() {
                             </div>
                         )}
 
-                        {/* Footer & Reconciliation */}
-                        <div className="flex gap-4 mt-8 avoid-break" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-                            <div className="flex-1 border border-[#bfdbfe] rounded p-4 bg-[#eff6ff]">
-                                <div className="flex items-center gap-2 mb-2 text-[#1e40af]">
-                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
-                                    <h4 className="font-extrabold text-[11px]">OTENTIKASI & AUDIT SISTEM TERKOMPUTERISASI</h4>
+                        {/* REKONSILIASI NILAI: (A) persediaan tanpa PPN dari buku batch FIFO, (B) penjualan, laba & PPN */}
+                        {reportData.rekonsiliasi && (() => {
+                            const rk = reportData.rekonsiliasi;
+                            const ps = rk.persediaan;
+                            const pj = rk.penjualan;
+                            const pk = rk.pajak;
+                            const naik = Number(ps.perubahan) >= 0;
+                            const ppnKurang = Number(pk.ppn_kurang_bayar) >= 0;
+                            return (
+                                <div className="mt-8 avoid-break" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                                    <h4 className="font-extrabold text-[11px] text-[#1e293b] mb-3 border-b border-[#e2e8f0] pb-2">RINGKASAN REKONSILIASI NILAI</h4>
+                                    <div className="grid grid-cols-2 gap-4 text-[9.5px] text-[#475569]">
+                                        <div className="border border-[#e2e8f0] rounded p-3 bg-[#ffffff] space-y-1">
+                                            <p className="font-extrabold text-[10px] text-[#047857] mb-1">A. NILAI PERSEDIAAN <span className="font-normal text-[#94a3b8]">(harga perolehan, tanpa PPN, tanpa jasa)</span></p>
+                                            <RekonRow label={`Saldo awal (${reportData.periode?.start})`} value={ps.saldo_awal} />
+                                            {tampilkan(ps.masuk).map(([k, v]) => <RekonRow key={k} op="+" label={MASUK_LABEL[k] || k} value={v} />)}
+                                            {tampilkan(ps.keluar).map(([k, v]) => <RekonRow key={k} op="−" label={KELUAR_LABEL[k] || k} value={v} />)}
+                                            <RekonRow strong label={`Saldo akhir (${reportData.periode?.end})`} value={ps.saldo_akhir} accent="text-[#047857]" />
+                                            <div className={`flex justify-between text-[9px] ${naik ? 'text-[#047857]' : 'text-[#e11d48]'}`}>
+                                                <span>Perubahan nilai persediaan periode ini</span>
+                                                <span className="font-bold whitespace-nowrap">{naik ? '+' : ''}{formatRp(ps.perubahan)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="border border-[#e2e8f0] rounded p-3 bg-[#ffffff] space-y-1">
+                                            <p className="font-extrabold text-[10px] text-[#1d4ed8] mb-1">B. PENJUALAN, LABA & PAJAK <span className="font-normal text-[#94a3b8]">(tanpa PPN)</span></p>
+                                            <RekonRow label="Penjualan barang" value={pj.penjualan_barang} />
+                                            <RekonRow op="−" label="Retur penjualan" value={pj.retur_penjualan} />
+                                            <RekonRow op="−" label="HPP bersih (FIFO, setelah retur)" value={pj.hpp_bersih} />
+                                            <RekonRow strong label={`Laba kotor barang (margin ${String(pj.margin_barang_persen).replace('.', ',')}%)`} value={pj.laba_kotor_barang} accent="text-[#1d4ed8]" />
+                                            <RekonRow op="+" label="Penjualan jasa (non-stok)" value={pj.penjualan_jasa} />
+                                            <RekonRow strong label="Laba kotor total" value={pj.laba_kotor_total} accent="text-[#1d4ed8]" note="sama dengan perhitungan laba di Dashboard" />
+                                            <div className="border-t border-dashed border-[#e2e8f0] mt-2 pt-1.5 space-y-1">
+                                                <RekonRow label="PPN keluaran (setelah retur)" value={(Number(pk.ppn_keluaran) - Number(pk.ppn_retur_penjualan)).toFixed(2)} />
+                                                <RekonRow op="−" label="PPN masukan (setelah retur)" value={(Number(pk.ppn_masukan) - Number(pk.ppn_retur_pembelian)).toFixed(2)} />
+                                                <RekonRow strong label={ppnKurang ? 'PPN kurang bayar (disetor)' : 'PPN lebih bayar'} value={Math.abs(Number(pk.ppn_kurang_bayar)).toFixed(2)} accent={ppnKurang ? 'text-[#b45309]' : 'text-[#047857]'} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-[8px] text-[#94a3b8] leading-snug">
+                                        Info nilai faktur (termasuk PPN): Masuk {formatRp(reportData.summary.inbound.nilai)} • Keluar {formatRp(reportData.summary.outbound.nilai)} • Retur {formatRp(reportData.summary.returns.nilai)}.
+                                        {' '}Nilai faktur tidak dipakai untuk rekonsiliasi karena mencampur harga beli, harga jual, PPN, dan jasa.
+                                    </div>
+                                    {Number(rk.cek_batch?.selisih) !== 0 && (
+                                        <div className="mt-2 text-[8px] text-[#b45309] bg-[#fffbeb] border border-[#fde68a] rounded px-2 py-1.5">
+                                            Perhatian: selisih data batch {formatRp(rk.cek_batch.selisih)} ({rk.cek_batch.batch.map(b => `${b.id_batch}: ${b.qty_selisih.toLocaleString('id-ID')} unit`).join(', ')}).
+                                            {' '}Jumlah awal batch dikurangi pemakaian tidak sama dengan sisa batch, sehingga saldo buku persediaan lebih besar dari sisa fisik. Data tidak diubah otomatis; perlu dicek.
+                                        </div>
+                                    )}
                                 </div>
-                                <p className="text-[9px] text-[#64748b] text-justify">
-                                    * Dokumen dihasilkan otomatis oleh sistem <strong>StockPro ERP</strong>. Keaslian data dapat diverifikasi dengan mencocokkan hash di bawah terhadap data sumber.
-                                </p>
-                                <div className="text-[7px] text-[#94a3b8] mt-2 font-mono leading-snug">
-                                    <div className="font-sans text-[8px]">SHA-256 data laporan:</div>
-                                    <div>{auditHash.slice(0, 32)}</div>
-                                    <div>{auditHash.slice(32)}</div>
-                                </div>
-                            </div>
+                            );
+                        })()}
 
-                            <div className="w-[300px] border border-[#e2e8f0] rounded p-4 bg-[#ffffff]">
-                                <h4 className="font-extrabold text-[11px] text-[#1e293b] mb-3 border-b border-[#e2e8f0] pb-2">RINGKASAN REKONSILIASI NILAI</h4>
-                                <div className="space-y-2 text-[10px] text-[#475569]">
-                                    <div className="flex justify-between">
-                                        <span>Nilai Total Masuk (Inbound):</span>
-                                        <span className="font-semibold text-[#1e293b]">{formatRp(reportData.summary.inbound.nilai)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Nilai Total Keluar (Outbound):</span>
-                                        <span className="font-semibold text-[#1e293b]">{formatRp(reportData.summary.outbound.nilai)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Nilai Retur / Potongan Reject:</span>
-                                        <span className="font-semibold text-[#e11d48]">- {formatRp(reportData.summary.returns.nilai)}</span>
-                                    </div>
-                                    <div className="flex justify-between border-t border-[#e2e8f0] pt-2 mt-2">
-                                        <span className="font-extrabold text-[#1e293b] text-[11px]">SALDO REKONSILIASI BERSIH:</span>
-                                        <span className={`font-extrabold text-[12px] whitespace-nowrap ${reportData.summary.net.nilai >= 0 ? 'text-[#2563eb]' : 'text-[#e11d48]'}`}>{formatRp(reportData.summary.net.nilai)}</span>
-                                    </div>
-                                    <p className="text-[7px] text-[#94a3b8]">Nilai per transaksi dibulatkan ke rupiah, total = jumlah nilai baris.</p>
-                                </div>
+                        {/* Otentikasi & audit */}
+                        <div className="mt-4 avoid-break border border-[#bfdbfe] rounded p-4 bg-[#eff6ff]" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                            <div className="flex items-center gap-2 mb-2 text-[#1e40af]">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
+                                <h4 className="font-extrabold text-[11px]">OTENTIKASI & AUDIT SISTEM TERKOMPUTERISASI</h4>
+                            </div>
+                            <p className="text-[9px] text-[#64748b] text-justify">
+                                * Dokumen dihasilkan otomatis oleh sistem <strong>StockPro ERP</strong>. Keaslian data dapat diverifikasi dengan mencocokkan hash di bawah terhadap data sumber.
+                            </p>
+                            <div className="text-[7px] text-[#94a3b8] mt-2 font-mono leading-snug">
+                                <div className="font-sans text-[8px]">SHA-256 data laporan:</div>
+                                <div>{auditHash.slice(0, 32)}</div>
+                                <div>{auditHash.slice(32)}</div>
                             </div>
                         </div>
 
