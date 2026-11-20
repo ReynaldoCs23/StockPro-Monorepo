@@ -23,6 +23,34 @@ const fmtDateTime = (d) => {
 };
 const ymdToDmy = (s) => (s || '').split('-').reverse().join('/');
 
+/**
+ * 4 baris penutup tiap bagian (menggantikan baris SUBTOTAL lama): Subtotal (tanpa PPN), DPP, PPN, Total.
+ * Unit ditampilkan di baris Subtotal, status di baris Total — posisi kolom sama dengan baris subtotal lama.
+ */
+const SectionTotals = ({ rincian, unitCell, statusCell, accent }) => {
+    const rows = [
+        ['Subtotal (tidak termasuk PPN)', rincian?.subtotal],
+        ['DPP', rincian?.dpp],
+        ['PPN', rincian?.ppn],
+        ['Total', rincian?.total],
+    ];
+    return (
+        <tbody className="avoid-break" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+            {rows.map(([label, value], i) => {
+                const isTotal = i === rows.length - 1;
+                return (
+                    <tr key={label} className={`bg-[#f8fafc] text-[#1e293b] ${isTotal ? 'font-bold border-b border-[#cbd5e1]' : 'font-normal'}`}>
+                        <td colSpan="5" className={`${i === 0 ? 'pt-2' : 'pt-1'} ${isTotal ? 'pb-2' : 'pb-1'} px-2 text-right`}>{label}:</td>
+                        {i === 0 ? unitCell : <td className="px-1"></td>}
+                        <td colSpan="2" className={`${i === 0 ? 'pt-2' : 'pt-1'} ${isTotal ? `pb-2 ${accent}` : 'pb-1'} px-1 text-right whitespace-nowrap`}>{formatRp(value)}</td>
+                        {isTotal ? statusCell : <td className="px-2"></td>}
+                    </tr>
+                );
+            })}
+        </tbody>
+    );
+};
+
 // Baris rekonsiliasi: label kiri, nominal kanan (format faktur ,00)
 const RekonRow = ({ label, value, op = '', strong = false, accent = '', note }) => (
     <div className={`flex justify-between gap-2 ${strong ? 'border-t border-[#e2e8f0] pt-1.5 mt-1.5' : ''}`}>
@@ -230,7 +258,16 @@ export default function LaporanMutasi() {
         const q = (col) => `"${String(col ?? '').replace(/"/g, '""')}"`;
         const qtyText = (r) => r.konversi ? `${r.qty} ${unit(r.satuan)} (${r.konversi.qty_beli} ${unit(r.konversi.satuan_beli)} x ${r.konversi.isi_per_satuan})` : r.qty;
 
-        const addSectionToCSV = (title, headers, dataRows, mapRowFn) => {
+        // 4 baris penutup bagian (sama dengan tampilan): unit di baris Subtotal, status di baris Total
+        const addSectionTotalsToCSV = (rincian, unitText, statusText) => {
+            [['Subtotal (tidak termasuk PPN)', rincian?.subtotal, unitText, ''], ['DPP', rincian?.dpp, '', ''],
+             ['PPN', rincian?.ppn, '', ''], ['Total', rincian?.total, '', statusText]]
+                .forEach(([label, v, unit, status]) => {
+                    csvContent += ['', '', '', '', label, unit, '', formatRupiah(v), status].map(q).join(",") + "\n";
+                });
+        };
+
+        const addSectionToCSV = (title, headers, dataRows, mapRowFn, totals) => {
             csvContent += `${title}\n`;
             csvContent += headers.join(",") + "\n";
             dataRows.forEach((row, index) => {
@@ -241,6 +278,7 @@ export default function LaporanMutasi() {
                     });
                 }
             });
+            if (totals) addSectionTotalsToCSV(...totals);
             csvContent += "\n";
         };
 
@@ -248,21 +286,27 @@ export default function LaporanMutasi() {
             "BAGIAN I: REKAPITULASI BARANG MASUK (INBOUND)",
             ["No", "ID Transaksi", "Tanggal", "Sumber / Supplier", "Nama Barang", "Qty (satuan dasar)", "Harga Satuan (sblm PPN)", "Total Nilai", "Keterangan"],
             reportData.inbound_data,
-            (r, i) => [i, r.id_transaksi, r.tanggal, r.sumber, r.nama_barang, r.is_multi ? r.qty : qtyText(r), r.harga_satuan == null ? '-' : formatRupiah(r.harga_satuan), formatRupiah(r.total_nilai_bulat), r.keterangan]
+            (r, i) => [i, r.id_transaksi, r.tanggal, r.sumber, r.nama_barang, r.is_multi ? r.qty : qtyText(r), r.harga_satuan == null ? '-' : formatRupiah(r.harga_satuan), formatRupiah(r.total_nilai_bulat), r.keterangan],
+            [reportData.summary.inbound.rincian, fmtNum(reportData.summary.inbound.qty_fisik), 'Status: Verified Inbound']
         );
 
         addSectionToCSV(
             "BAGIAN II: REKAPITULASI BARANG KELUAR (OUTBOUND / DISTRIBUSI)",
             ["No", "ID Transaksi", "Tanggal", "Tujuan / Customer", "Nama Barang", "Qty (satuan dasar)", "Harga Satuan (sblm PPN)", "Total Nilai", "Keterangan"],
             reportData.outbound_data,
-            (r, i) => [i, r.id_transaksi, r.tanggal, r.tujuan, r.nama_barang + (r.is_jasa ? ' [JASA]' : ''), r.is_multi ? r.qty : qtyText(r), r.harga_satuan == null ? '-' : formatRupiah(r.harga_satuan), formatRupiah(r.total_nilai_bulat), r.keterangan]
+            (r, i) => [i, r.id_transaksi, r.tanggal, r.tujuan, r.nama_barang + (r.is_jasa ? ' [JASA]' : ''), r.is_multi ? r.qty : qtyText(r), r.harga_satuan == null ? '-' : formatRupiah(r.harga_satuan), formatRupiah(r.total_nilai_bulat), r.keterangan],
+            [reportData.summary.outbound.rincian,
+             fmtNum(reportData.summary.outbound.qty_fisik) + (reportData.summary.outbound.qty_jasa > 0 ? ` + ${fmtNum(reportData.summary.outbound.qty_jasa)} jasa` : ''),
+             'Status: Delivery Confirmed']
         );
 
         addSectionToCSV(
             "BAGIAN III: REKAPITULASI RETUR & REJECT",
             ["No", "ID Retur", "Tanggal", "Asal Retur", "Nama Barang", "Qty", "Kondisi / Masalah", "Estimasi Nilai", "Tindakan / Disposisi"],
             reportData.returns_data,
-            (r, i) => [i, r.id_transaksi, r.tanggal, r.asal_retur, r.nama_barang, r.qty, r.kondisi, formatRupiah(r.estimasi_nilai_bulat), r.tindakan]
+            (r, i) => [i, r.id_transaksi, r.tanggal, r.asal_retur, r.nama_barang, r.qty, r.kondisi, formatRupiah(r.estimasi_nilai_bulat), r.tindakan],
+            [reportData.summary.returns.rincian, fmtNum(reportData.summary.returns.qty),
+             reportData.returns_data.length > 0 ? `Status: ${reportData.summary.returns.status}` : 'Status: Tidak Ada Retur']
         );
 
         csvContent += "NET MUTASI PER BARANG (BARANG FISIK)\n";
@@ -459,14 +503,12 @@ export default function LaporanMutasi() {
                                 {reportData.inbound_data.length > 0
                                     ? reportData.inbound_data.map((row, i) => <TransactionGroup key={row.id_transaksi} row={row} no={i + 1} entity={row.sumber} />)
                                     : <EmptyBody />}
-                                <tbody>
-                                    <tr className="bg-[#f8fafc] border-b border-[#cbd5e1] font-bold text-[#1e293b]">
-                                        <td colSpan="5" className="py-2 px-2 text-right">SUBTOTAL BARANG MASUK:</td>
-                                        <td className="py-2 px-1 text-right text-[#047857]">{fmtNum(reportData.summary.inbound.qty_fisik)}</td>
-                                        <td colSpan="2" className="py-2 px-1 text-right text-[#047857]">{formatRp(reportData.summary.inbound.nilai)}</td>
-                                        <td className="py-2 px-2 text-[8px] text-[#059669] italic">Status: Verified Inbound</td>
-                                    </tr>
-                                </tbody>
+                                <SectionTotals
+                                    rincian={reportData.summary.inbound.rincian}
+                                    accent="text-[#047857]"
+                                    unitCell={<td className="pt-2 pb-1 px-1 text-right font-bold text-[#047857]">{fmtNum(reportData.summary.inbound.qty_fisik)}</td>}
+                                    statusCell={<td className="pb-2 pt-1 px-2 text-[8px] font-bold text-[#059669] italic">Status: Verified Inbound</td>}
+                                />
                             </table>
                             <p className="text-[7px] text-[#94a3b8] mt-1 leading-snug">
                                 Qty ditampilkan dalam satuan dasar (pcs). Pembelian dalam box dikonversi sesuai isi per box.
@@ -507,17 +549,17 @@ export default function LaporanMutasi() {
                                         {outJasa.map((row, i) => <TransactionGroup key={row.id_transaksi} row={row} no={outFisik.length + i + 1} entity={row.tujuan} />)}
                                     </>
                                 )}
-                                <tbody>
-                                    <tr className="bg-[#f8fafc] border-b border-[#cbd5e1] font-bold text-[#1e293b]">
-                                        <td colSpan="5" className="py-2 px-2 text-right">SUBTOTAL BARANG KELUAR:</td>
-                                        <td className="py-2 px-1 text-right text-[#1d4ed8] whitespace-nowrap">
+                                <SectionTotals
+                                    rincian={reportData.summary.outbound.rincian}
+                                    accent="text-[#1d4ed8]"
+                                    unitCell={(
+                                        <td className="pt-2 pb-1 px-1 text-right font-bold text-[#1d4ed8] whitespace-nowrap">
                                             {fmtNum(reportData.summary.outbound.qty_fisik)}
                                             {reportData.summary.outbound.qty_jasa > 0 && <span className={SUB_TEXT}>+ {fmtNum(reportData.summary.outbound.qty_jasa)} jasa</span>}
                                         </td>
-                                        <td colSpan="2" className="py-2 px-1 text-right text-[#1d4ed8]">{formatRp(reportData.summary.outbound.nilai)}</td>
-                                        <td className="py-2 px-2 text-[8px] text-[#2563eb] italic">Status: Delivery Confirmed</td>
-                                    </tr>
-                                </tbody>
+                                    )}
+                                    statusCell={<td className="pb-2 pt-1 px-2 text-[8px] font-bold text-[#2563eb] italic">Status: Delivery Confirmed</td>}
+                                />
                             </table>
                         </div>
 
@@ -566,16 +608,14 @@ export default function LaporanMutasi() {
                                         ))}
                                     </tbody>
                                 )) : <EmptyBody />}
-                                <tbody>
-                                    <tr className="bg-[#f8fafc] border-b border-[#cbd5e1] font-bold text-[#1e293b]">
-                                        <td colSpan="5" className="py-2 px-2 text-right">SUBTOTAL RETUR & REJECT:</td>
-                                        <td className="py-2 px-1 text-right text-[#d97706]">{fmtNum(reportData.summary.returns.qty)}</td>
-                                        <td colSpan="2" className="py-2 px-1 text-right text-[#d97706]">{formatRp(reportData.summary.returns.nilai)}</td>
-                                        {hasReturns
-                                            ? <td className="py-2 px-2 text-[8px] text-[#d97706] italic">Status: {reportData.summary.returns.status}</td>
-                                            : <td className="py-2 px-2 text-[8px] text-[#94a3b8] italic">Status: Tidak Ada Retur</td>}
-                                    </tr>
-                                </tbody>
+                                <SectionTotals
+                                    rincian={reportData.summary.returns.rincian}
+                                    accent="text-[#d97706]"
+                                    unitCell={<td className="pt-2 pb-1 px-1 text-right font-bold text-[#d97706]">{fmtNum(reportData.summary.returns.qty)}</td>}
+                                    statusCell={hasReturns
+                                        ? <td className="pb-2 pt-1 px-2 text-[8px] font-bold text-[#d97706] italic">Status: {reportData.summary.returns.status}</td>
+                                        : <td className="pb-2 pt-1 px-2 text-[8px] font-bold text-[#94a3b8] italic">Status: Tidak Ada Retur</td>}
+                                />
                             </table>
                         </div>
 

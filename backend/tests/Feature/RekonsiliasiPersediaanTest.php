@@ -110,6 +110,6 @@ class RekonsiliasiPersediaanTest extends TestCase
         $r = $this->getJson('/api/reports/mutasi?start_date=2026-01-01&end_date=2026-01-31')->assertOk()->json();
         $this->assertSame('6000.00', $r['rekonsiliasi']['persediaan']['saldo_akhir']); // 10.000 - 4.000
         $this->assertSame('4000.00', $r['rekonsiliasi']['penjualan']['laba_kotor_barang']); // 8.000 - 4.000
-        $this->assertSame(2, $r['audit']['canonical_version']);
+        $this->assertSame(3, $r['audit']['canonical_version']); // v3: + rincian Subtotal/DPP/PPN/Total
     }
 }

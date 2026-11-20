@@ -30,7 +30,7 @@ class MutasiReportService
     private const JASA_MARKERS = ['jasa', 'service', 'non-stok', 'non stok'];
 
     /** Versi format kanonikal hash. Naikkan jika struktur data yang di-hash berubah. */
-    public const HASH_CANONICAL_VERSION = 2; // v2: blok rekonsiliasi ikut di-hash
+    public const HASH_CANONICAL_VERSION = 3; // v3: + rincian Subtotal/DPP/PPN/Total per baris & bagian
 
     // =====================================================================
     // KONVERSI SATUAN (terpusat)
@@ -122,6 +122,12 @@ class MutasiReportService
         $sumOut = $this->summarize($outbound);
         $sumRet = $this->summarize($returnsCounted);
         $sumRet['count'] = count($returns);
+
+        // Baris penutup tiap bagian: Subtotal (tanpa PPN), DPP, PPN, Total — dari baris yang sama dengan subtotal lama
+        $periodeLog = Carbon::parse($startDate)->format('d/m/Y') . '-' . Carbon::parse($endDate)->format('d/m/Y');
+        $sumIn['rincian'] = $this->rincianPpnBagian($inbound, $sumIn['nilai'], 'Bagian I (Barang Masuk)', $periodeLog);
+        $sumOut['rincian'] = $this->rincianPpnBagian($outbound, $sumOut['nilai'], 'Bagian II (Barang Keluar)', $periodeLog);
+        $sumRet['rincian'] = $this->rincianPpnBagian($returnsCounted, $sumRet['nilai'], 'Bagian III (Retur)', $periodeLog);
 
         $netQtyFisik = $sumIn['qty_fisik'] - $sumOut['qty_fisik'] - $sumRet['qty_fisik'];
         $netQtySemua = $sumIn['qty'] - $sumOut['qty'] - $sumRet['qty'];
@@ -295,6 +301,7 @@ class MutasiReportService
             'konversi' => $single['konversi'] ?? null,
             'total_nilai' => $total,
             'total_nilai_bulat' => $totalBulat,
+            'rincian_ppn' => self::rincianPpnBaris($h, $total),
             'is_multi' => $isMulti,
             'is_jasa' => $isJasa,
             'items' => $items,
@@ -331,6 +338,56 @@ class MutasiReportService
         }
 
         return $row;
+    }
+
+    /**
+     * Rincian PPN satu baris transaksi untuk baris penutup tiap bagian Laporan Mutasi (aturan user):
+     *   Subtotal = nilai sebelum PPN yang tersimpan (totalTransaksi - pajak_nominal - ppnbm);
+     *              bila PPN belum tersimpan padahal ada tarif pajak: nilai baris / 1,11.
+     *   DPP = Subtotal x 11/12 ; PPN = Subtotal x 11% ; Total = Subtotal + PPN.
+     *   Semua dibulatkan 2 desimal (half-up) per baris; nilai bagian = jumlah nilai baris yang sudah dibulatkan.
+     */
+    private static function rincianPpnBaris(object $h, float $total): array
+    {
+        $nilai = InvoiceCalculator::num(number_format($total, 2, '.', ''));
+        $ppnTersimpan = InvoiceCalculator::num($h->pajak_nominal ?? 0);
+        if (bccomp($ppnTersimpan, '0', 2) === 0 && (float) ($h->pajak_persen ?? 0) > 0) {
+            $subtotal = InvoiceCalculator::roundHalfUp(bcdiv($nilai, '1.11', 10), 2);
+        } else {
+            $subtotal = InvoiceCalculator::money(bcsub(bcsub($nilai, $ppnTersimpan, 4), InvoiceCalculator::num($h->ppnbm ?? 0), 4));
+        }
+        $dpp = InvoiceCalculator::roundHalfUp(bcdiv(bcmul($subtotal, '11', 10), '12', 10), 2);
+        $ppn = InvoiceCalculator::roundHalfUp(bcdiv(bcmul($subtotal, '11', 10), '100', 10), 2);
+
+        return [
+            'subtotal' => $subtotal,
+            'dpp' => $dpp,
+            'ppn' => $ppn,
+            'total' => InvoiceCalculator::money(bcadd($subtotal, $ppn, 2)),
+        ];
+    }
+
+    /**
+     * Jumlah rincian PPN satu bagian (jumlah nilai per baris yang sudah dibulatkan) + pembanding subtotal lama.
+     * Bila Total berbeda dari subtotal lama, selisihnya dicatat sebagai peringatan di log (tidak disesuaikan).
+     */
+    private function rincianPpnBagian(array $rows, float $subtotalLama, string $bagian, string $periode): array
+    {
+        $sum = ['subtotal' => '0.00', 'dpp' => '0.00', 'ppn' => '0.00', 'total' => '0.00'];
+        foreach ($rows as $r) {
+            foreach ($sum as $k => $v) {
+                $sum[$k] = bcadd($v, $r['rincian_ppn'][$k], 2);
+            }
+        }
+        $lama = InvoiceCalculator::money(number_format($subtotalLama, 2, '.', ''));
+        $selisih = bcsub($sum['total'], $lama, 2);
+        if (bccomp($selisih, '0', 2) !== 0) {
+            Log::warning(sprintf(
+                '[LaporanMutasi] %s periode %s: Total baru (Subtotal + PPN 11%%) %s != subtotal lama %s, selisih %s. Tidak disesuaikan.',
+                $bagian, $periode, $sum['total'], $lama, $selisih
+            ));
+        }
+        return $sum + ['subtotal_lama' => $lama, 'selisih_vs_lama' => $selisih];
     }
 
     private function summarize(array $rows): array
