@@ -8,3 +8,8 @@
 /ai-engine/venv/
 /ai-engine/__pycache__/
 *.pyc
+ai-engine/chatbot.log
+frontend/.env.save
+*.log
+frontend/dist/
+frontend/.env.production
